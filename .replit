@@ -1,0 +1,6 @@
+# Workspace development. Production requires persistent database integration first.
+run = ["python", "scripts/run_replit.py"]
+
+[[ports]]
+localPort = 8000
+externalPort = 80

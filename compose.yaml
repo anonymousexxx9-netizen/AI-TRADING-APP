@@ -1,0 +1,13 @@
+services:
+  api:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_PATH: /app/data/bayproject.db
+    volumes:
+      - bot-data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+volumes:
+  bot-data:

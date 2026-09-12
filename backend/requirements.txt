@@ -1,0 +1,10 @@
+python-telegram-bot>=20.7
+discord.py>=2.3.2
+python-dotenv
+requests
+numpy
+pandas
+matplotlib
+mplfinance
+tavily-python
+duckduckgo-search

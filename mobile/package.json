@@ -1,0 +1,40 @@
+{
+  "name": "bayproject-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.12",
+    "@expo/vector-icons": "^15.0.2",
+    "expo": "~55.0.31",
+    "expo-constants": "~55.0.17",
+    "expo-dev-client": "~55.0.40",
+    "expo-device": "~55.0.21",
+    "expo-image-picker": "~55.0.24",
+    "expo-notifications": "~55.0.27",
+    "expo-secure-store": "~55.0.18",
+    "expo-system-ui": "~55.0.22",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-svg": "15.15.3",
+    "react-native-web": "^0.21.0"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.2.0"
+  }
+}
