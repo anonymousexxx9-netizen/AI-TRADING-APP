@@ -7,10 +7,10 @@ export default {
     ios: { supportsTablet: true, bundleIdentifier: 'com.bayproject.privateapp' },
     android: { package: 'com.bayproject.privateapp',
       ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}) },
-    plugins: ['expo-secure-store', 'expo-notifications', ['expo-image-picker', {
+    plugins: ['expo-font', 'expo-secure-store', 'expo-notifications', ['expo-image-picker', {
       photosPermission: 'Izinkan Bayproject memilih screenshot chart untuk dianalisis.',
       cameraPermission: false, microphonePermission: false
     }]],
-    extra: { eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID || '' } },
+    extra: { eas: { projectId: '8f7108a4-b58e-4a49-9705-35bb7962c758' } },
   }
 };

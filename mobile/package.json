@@ -17,6 +17,7 @@
     "expo-constants": "~55.0.17",
     "expo-dev-client": "~55.0.40",
     "expo-device": "~55.0.21",
+    "expo-font": "~55.0.8",
     "expo-image-picker": "~55.0.24",
     "expo-notifications": "~55.0.27",
     "expo-secure-store": "~55.0.18",
@@ -34,7 +35,8 @@
     }
   },
   "devDependencies": {
-    "typescript": "~5.9.2",
-    "@types/react": "~19.2.0"
+    "@expo/ngrok": "^4.1.0",
+    "@types/react": "~19.2.0",
+    "typescript": "~5.9.2"
   }
 }
