@@ -15,6 +15,26 @@ jobs:
       - run: npm ci --prefix mobile
       - name: Build Android APK
         working-directory: mobile
-        run: npx eas-cli build --platform android --profile preview --non-interactive
+        run: npx eas-cli build --platform android --profile preview --non-interactive --wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Get APK URL
+        working-directory: mobile
+        run: npx eas-cli build:list --platform android --limit 1 --json > build.json
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        working-directory: mobile
+        shell: pwsh
+        run: |
+          $build = Get-Content build.json | ConvertFrom-Json
+          Invoke-WebRequest -Uri $build[0].artifacts.buildUrl -OutFile app.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bayproject-apk
+          path: mobile/app.apk
+          retention-days: 30
