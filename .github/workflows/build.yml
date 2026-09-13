@@ -16,4 +16,4 @@ jobs:
       - name: Build Android APK
         run: npx eas-cli build --platform android --profile preview --non-interactive
         env:
-          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
