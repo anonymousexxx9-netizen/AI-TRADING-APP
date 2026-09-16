@@ -14,6 +14,7 @@ import math
 import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import requests
 import numpy as np
@@ -1911,23 +1912,24 @@ def generate_daily_debrief() -> str:
     ngarang cerita) — Technical Score & level S/R yang disebut dihitung
     langsung dari indikator real-time, entry/SL/TP (kalau disebut) HARUS
     berasal dari level yang diberikan, bukan angka karangan AI."""
-    pair_summaries = []
-    for symbol in DAILY_DEBRIEF_PAIRS:
+    def summarize_pair(symbol):
         df, err = _ohlcv_or_error(symbol, "1h")
         if err:
-            pair_summaries.append(f"- {symbol}: data tidak tersedia ({err})")
-            continue
+            return f"- {symbol}: data tidak tersedia ({err})"
         indicators = calculate_indicators(df)
         conf = calculate_confidence(indicators)
         regime = get_regime(indicators)
         sr = get_support_resistance(df)
         nearest_support = sr["supports"][0] if sr["supports"] else "N/A"
         nearest_resistance = sr["resistances"][0] if sr["resistances"] else "N/A"
-        pair_summaries.append(
+        return (
             f"- {symbol}: harga {indicators['close']} | Regime {regime} | Bias {conf['bias_direction']} "
             f"(Technical Score {conf['confidence']}%, BUKAN probabilitas) | "
             f"Support terdekat: {nearest_support} | Resistance terdekat: {nearest_resistance}"
         )
+
+    with ThreadPoolExecutor(max_workers=len(DAILY_DEBRIEF_PAIRS)) as pool:
+        pair_summaries = list(pool.map(summarize_pair, DAILY_DEBRIEF_PAIRS))
     pair_text = "\n".join(pair_summaries)
 
     events_today = get_calendar(filter_country="USD", only_today=True)
@@ -3519,9 +3521,15 @@ def generate_macro_briefing() -> str:
     untuk sintesis, dengan instruksi eksplisit agar model tidak mengarang
     angka bila data mentah tipis.
     """
-    news_items = _fetch_macro_news_items()
-    events_today = get_calendar(filter_country="USD", filter_impact="High", only_today=True)
-    narrative_block = build_narrative_block()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        news_items, events_today, narrative_block = pool.map(
+            lambda fn: fn(),
+            (
+                _fetch_macro_news_items,
+                lambda: get_calendar(filter_country="USD", filter_impact="High", only_today=True),
+                build_narrative_block,
+            ),
+        )
 
     if not news_items and not events_today and "TIDAK ADA DATA CANDLE" in narrative_block:
         return (
