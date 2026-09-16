@@ -43,7 +43,7 @@ function Shell() {
       <View style={styles.header}><View style={s.row}><Image source={require('./assets/bayproject-logo.jpeg')} accessibilityLabel="Logo Bayproject FX" style={styles.logo} resizeMode="contain" /><View><Text style={styles.brand}>BAYPROJECT<Text style={{ color: C.silver }}>.FX</Text></Text><Text style={styles.brandSub}>TRADE  |  ANALYZE  |  ACHIEVE</Text></View></View>
         {connection && <Pressable accessibilityLabel="Pengaturan" accessibilityRole="button" disabled={busy} onPress={() => setTab('settings')} style={styles.iconButton}><Icon name="settings-outline" color={tab === 'settings' ? C.gold : C.muted} /></Pressable>}
       </View>
-      {!!error && <Pressable accessibilityRole="button" accessibilityLabel="Tutup pesan error" onPress={() => setError('')} style={styles.error}><Icon name="alert-circle-outline" color={C.red} /><Text style={{ color: C.red, flex: 1, lineHeight: 20 }}>{error}</Text><Icon name="close" color={C.red} size={16} /></Pressable>}
+      {!!error && <View style={styles.error}><Icon name="alert-circle-outline" color={C.red} /><Text style={{ color: C.red, flex: 1, lineHeight: 20 }}>{error}</Text><Pressable accessibilityRole="button" accessibilityLabel="Tutup pesan error" onPress={() => setError('')}><Icon name="close" color={C.red} size={18} /></Pressable></View>}
       {busy && <View style={styles.progress}><ActivityIndicator size="small" color={C.gold} /><Text style={s.muted}>Memproses permintaan…</Text></View>}
       {!connection ? <Connect onConnect={c => run(() => connect(c))} busy={busy} /> : <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {tab === 'home' && <Home connection={connection} run={run} busy={busy} navigate={setTab} />}

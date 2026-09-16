@@ -45,7 +45,8 @@ export async function request(connection: Connection, path: string, method = 'GE
     }
     return data;
   } catch (error: any) {
-    if (error.name === 'AbortError') throw new Error('Waktu tunggu habis. Periksa hasil sebelum mengulang aksi agent.');
+    if (error.name === 'AbortError') throw new Error('Waktu tunggu habis. Periksa koneksi lalu coba lagi.');
+    if (error instanceof TypeError) throw new Error('Server tidak dapat dijangkau. Periksa koneksi internet dan alamat server.');
     throw error;
   } finally { clearTimeout(timer); }
 }
