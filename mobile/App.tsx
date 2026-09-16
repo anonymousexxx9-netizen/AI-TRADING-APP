@@ -159,7 +159,15 @@ function Tools({ connection, run, busy }: ScreenProps) {
   const [showEventTools, setShowEventTools] = useState(false);
   const [high, setHigh] = useState(false), [today, setToday] = useState(false), [event, setEvent] = useState('CPI');
   const [output, setOutput] = useState<any>(null), [outputTitle, setOutputTitle] = useState('');
-  const call = (title: string, path: string, body?: any, method = 'POST') => run(async () => { setOutput(null); setOutputTitle(title); setOutput(await request(connection, path, method, body)); });
+  const [reports, setReports] = useState<Record<string, any>>({});
+  const call = (title: string, path: string, body?: any, method = 'POST') => run(async () => {
+    setOutput(null); setOutputTitle(title);
+    const result = await request(connection, path, method, body);
+    setOutput(result);
+    if (['Macro briefing', 'Daily debrief', 'Berita terbaru'].includes(title)) {
+      setReports(previous => ({ ...previous, [title]: result }));
+    }
+  });
   return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"><Heading eyebrow="TRADER TOOLKIT" title="Dari konteks ke keputusan." /><Chips values={toolOptions} value={tool} onChange={t => { setTool(t); setOutput(null); }} />
     <Card><Text style={s.heading}>{tool}</Text>
       {['Sinyal', 'Backtest', 'Kalkulator lot'].includes(tool) && <Field label="Pair" value={symbol} onChangeText={setSymbol} />}
@@ -170,8 +178,9 @@ function Tools({ connection, run, busy }: ScreenProps) {
       {tool === 'Korelasi' && <><Field label="Pair dipisahkan koma (2–6)" value={pairs} onChangeText={setPairs} multiline /><Button title="Hitung korelasi" disabled={busy} onPress={() => call('Matriks korelasi', '/tools/correlation', { symbols: pairs.split(',').map(p => p.trim()).filter(Boolean) })} /></>}
       {tool === 'Kalender' && <><View style={s.between}><Text style={s.text}>High impact saja</Text><Switch accessibilityLabel="High impact saja" value={high} onValueChange={setHigh} trackColor={{ true: C.gold }} /></View><View style={s.between}><Text style={s.text}>Hari ini saja</Text><Switch accessibilityLabel="Hari ini saja" value={today} onValueChange={setToday} trackColor={{ true: C.gold }} /></View><Button title="Muat kalender USD" disabled={busy} onPress={() => call('Kalender ekonomi', `/calendar?high=${high}&today=${today}`, undefined, 'GET')} /><Button title={showEventTools ? "Tutup alat analisis event" : "Analisis event & cari actual"} secondary onPress={() => setShowEventTools(!showEventTools)} />{showEventTools && <><Field label="Nama event untuk analisis" value={event} onChangeText={setEvent} placeholder="CPI / Non-Farm / FOMC" /><Button title="Preview & prediksi event" secondary disabled={busy} onPress={() => call('Event preview', '/calendar/preview', { query: event })} /><Button title="Analisis bias fundamental" secondary disabled={busy} onPress={() => call('Bias fundamental', '/calendar/bias', { query: event })} /><Button title="Cari hasil actual tambahan" secondary disabled={busy} onPress={() => call('Actual event', '/calendar/actual')} /></>}</>}
       {tool === 'Berita & Makro' && <><Field label="Topik berita" value={query} onChangeText={setQuery} /><Button title="Cari & rangkum berita" disabled={busy} onPress={() => call('Berita terbaru', '/reports/news', { query })} /><Button title="Macro briefing" secondary disabled={busy} onPress={() => call('Macro briefing', '/reports/macro', { query })} /><Button title="Daily market debrief" secondary disabled={busy} onPress={() => call('Daily debrief', '/reports/debrief', { query })} /></>}
-    </Card>
-    {output !== null && <Card><View style={s.row}><Icon name="document-text-outline" color={C.gold} /><Text style={s.heading}>{outputTitle}</Text></View><View style={s.divider} />{outputTitle === "Kalender ekonomi" && Array.isArray(output) ? <CalendarAgenda key={JSON.stringify(output)} events={output} onAnalyze={name => call("Event preview", "/calendar/preview", { query: name })} /> : <Result data={output} />}</Card>}
+     </Card>
+     {Object.keys(reports).length > 0 && <Card><View style={s.row}><Icon name="documents-outline" color={C.gold} /><Text style={s.heading}>Laporan tersimpan</Text></View><Text style={s.muted}>Laporan tetap tersedia selama aplikasi terbuka. Pilih laporan untuk membacanya tanpa generate ulang.</Text><Chips values={Object.keys(reports)} value={reports[outputTitle] ? outputTitle : Object.keys(reports)[0]} onChange={title => { setOutputTitle(title); setOutput(reports[title]); }} /></Card>}
+     {output !== null && <Card><View style={s.row}><Icon name="document-text-outline" color={C.gold} /><Text style={s.heading}>{outputTitle}</Text></View><View style={s.divider} />{outputTitle === "Kalender ekonomi" && Array.isArray(output) ? <CalendarAgenda key={JSON.stringify(output)} events={output} onAnalyze={name => call("Event preview", "/calendar/preview", { query: name })} /> : <Result data={output} />}</Card>}
   </ScrollView>;
 }
 
