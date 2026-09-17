@@ -29,24 +29,39 @@ export function validateConnection(value: Connection) {
 }
 
 export async function request(connection: Connection, path: string, method = 'GET', body?: unknown): Promise<any> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 240_000);
-  try {
-    const response = await fetch(connection.url + path, {
-      method, signal: controller.signal,
-      headers: { Authorization: `Bearer ${connection.token}`, 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      const detail = data?.detail;
-      throw new Error(typeof detail === 'string' ? detail : response.status === 422
-        ? 'Periksa isian: pair, angka, atau format gambar tidak valid.' : `Server merespons ${response.status}.`);
-    }
-    return data;
-  } catch (error: any) {
-    if (error.name === 'AbortError') throw new Error('Waktu tunggu habis. Periksa koneksi lalu coba lagi.');
-    if (error instanceof TypeError) throw new Error('Server tidak dapat dijangkau. Periksa koneksi internet dan alamat server.');
-    throw error;
-  } finally { clearTimeout(timer); }
+  let lastError: any;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const response = await fetch(connection.url + path, {
+        method, signal: controller.signal,
+        headers: { Authorization: `Bearer ${connection.token}`, 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = data?.detail;
+        const message = typeof detail === 'string' ? detail : response.status === 422
+          ? 'Periksa isian: pair, angka, atau format gambar tidak valid.' : `Server merespons ${response.status}.`;
+        if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(message);
+      }
+      return data;
+    } catch (error: any) {
+      lastError = error;
+      if (error.name === 'AbortError' || error instanceof TypeError) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
+          continue;
+        }
+        throw new Error('Server sedang dibangunkan atau tidak dapat dijangkau. Coba lagi beberapa saat.');
+      }
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+  throw lastError;
 }
