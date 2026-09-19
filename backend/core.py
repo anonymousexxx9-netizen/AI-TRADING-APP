@@ -2700,6 +2700,9 @@ def generate_chart_image(df: pd.DataFrame, symbol: str, interval: str, sr: dict 
     if len(plot_df) >= 50:
         ema50 = plot_df["Close"].ewm(span=50, adjust=False).mean()
         addplots.append(mpf.make_addplot(ema50, color="#4a90d9", width=1.1))
+    if len(plot_df) >= 200:
+        ema200 = plot_df["Close"].ewm(span=200, adjust=False).mean()
+        addplots.append(mpf.make_addplot(ema200, color="#e6c568", width=1.7, linestyle="--"))
 
     hlines_vals, hlines_colors = [], []
     if sr:
