@@ -3,11 +3,13 @@ import os
 import requests
 
 
-def chat_completion(payload, timeout=60):
-    key = os.getenv("AI_API_KEY") or os.getenv("GROQ_API_KEY", "")
+def chat_completion(payload, timeout=60, vision=False):
+    key_name = "AI_VISION_API_KEY" if vision else "AI_API_KEY"
+    key = os.getenv(key_name) or (os.getenv("GROQ_API_KEY", "") if not vision else "")
     if not key:
-        raise RuntimeError("AI belum dikonfigurasi. Isi AI_API_KEY di server.")
-    base = os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+        raise RuntimeError(f"AI belum dikonfigurasi. Isi {key_name} di server.")
+    default_base = "https://openrouter.ai/api/v1" if vision else "https://api.groq.com/openai/v1"
+    base = os.getenv("AI_VISION_BASE_URL" if vision else "AI_BASE_URL", default_base).rstrip("/")
     body = dict(payload)
     # Do not assume Groq-specific reasoning settings work with every routed model.
     body.pop("reasoning_effort", None)

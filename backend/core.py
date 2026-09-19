@@ -41,6 +41,8 @@ GROQ_VISION_MODEL = "qwen/qwen3.6-27b"  # pengganti resmi llama-4-scout-17b-16e-
 FF_RSS_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 GROQ_MODEL = os.environ.get("AI_TEXT_MODEL", GROQ_MODEL)
 GROQ_VISION_MODEL = os.environ.get("AI_VISION_MODEL", GROQ_VISION_MODEL)
+VISION_BASE_URL = os.environ.get("AI_VISION_BASE_URL", "https://openrouter.ai/api/v1")
+VISION_API_KEY = os.environ.get("AI_VISION_API_KEY", "")
 TWELVE_DATA_BASE = "https://api.twelvedata.com"
 DB_PATH = os.environ.get("DB_PATH", "bayproject.db")
 
@@ -4227,7 +4229,7 @@ def analyze_image_with_groq(image_bytes: bytes, caption: str = None) -> str:
                                      # beresiko habisin token buat "mikir" doang.
     }
     try:
-        response = chat_completion(payload, timeout=60)
+        response = chat_completion(payload, timeout=60, vision=True)
         data = response.json()
         if "error" in data:
             err_msg = data["error"].get("message", str(data["error"]))
