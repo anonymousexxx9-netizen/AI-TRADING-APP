@@ -237,7 +237,10 @@ def scan(body: MarketInput):
 
 @app.post('/signals/entry')
 def entry():
-    return result(core.generate_xau_entry_signal())
+    signal = core.generate_xau_entry_signal()
+    if signal.get('should_alert'):
+        signal['tracker_id'] = core.create_signal_tracker(signal)
+    return result(signal)
 
 
 @app.post('/signals/backtest')

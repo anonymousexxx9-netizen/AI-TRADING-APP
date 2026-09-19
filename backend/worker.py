@@ -25,9 +25,13 @@ def scheduled_jobs(now):
     return jobs
 
 
+async def check_signal_trackers_async(_telegram_app, _discord_bot):
+    await asyncio.to_thread(core.check_signal_trackers)
+
+
 async def tick(slow_checks=True, now=None):
     # All synchronous market/LLM work runs in this worker thread, not the API loop.
-    checks = [scheduler.check_high_impact_alerts, scheduler.check_price_alerts]
+    checks = [scheduler.check_high_impact_alerts, scheduler.check_price_alerts, check_signal_trackers_async]
     if slow_checks:
         checks += [scheduler.check_watchlist_traps, scheduler.check_scan_signals, scheduler.check_volatility_spikes]
     for fn in checks:

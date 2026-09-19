@@ -179,6 +179,23 @@ def init_db():
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS signal_trackers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            position TEXT NOT NULL,
+            entry REAL NOT NULL,
+            sl REAL NOT NULL,
+            tp1 REAL NOT NULL,
+            tp2 REAL NOT NULL,
+            entry_hit INTEGER NOT NULL DEFAULT 0,
+            tp1_hit INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS sent_volatility_alerts (
             user_id INTEGER NOT NULL,
             symbol TEXT NOT NULL,
@@ -1239,6 +1256,41 @@ def _fallback_xau_entry_decision(m15: dict, h4: dict, spot: Decimal) -> dict:
         "target_basis": "fallback",
         "reason": [],
     }
+
+
+def create_signal_tracker(signal: dict) -> int:
+    conn = get_db()
+    cur = conn.execute("INSERT INTO signal_trackers(symbol,position,entry,sl,tp1,tp2) VALUES (?,?,?,?,?,?)", (signal['symbol'], signal['position'], signal['entry'], signal['sl'], signal['tp1'], signal['tp2']))
+    conn.commit()
+    tracker_id = cur.lastrowid
+    conn.close()
+    return tracker_id
+
+
+def check_signal_trackers():
+    import storage
+    with get_db() as conn:
+        rows = [dict(row) for row in conn.execute("SELECT * FROM signal_trackers WHERE status='active'")]
+    for tracker in rows:
+        quote = get_forex_price(tracker['symbol'])
+        if 'price' not in quote:
+            continue
+        price = float(quote['price'])
+        event = None
+        updates = {}
+        if not tracker['entry_hit'] and ((tracker['position'] == 'BUY' and price >= tracker['entry']) or (tracker['position'] == 'SELL' and price <= tracker['entry'])):
+            event, updates = 'Entry hit', {'entry_hit': 1}
+        elif tracker['entry_hit'] and not tracker['tp1_hit'] and ((tracker['position'] == 'BUY' and price >= tracker['tp1']) or (tracker['position'] == 'SELL' and price <= tracker['tp1'])):
+            event, updates = 'TP1 hit (RR 1:1)', {'tp1_hit': 1}
+        elif tracker['entry_hit'] and ((tracker['position'] == 'BUY' and price >= tracker['tp2']) or (tracker['position'] == 'SELL' and price <= tracker['tp2'])):
+            event, updates = 'TP2 hit (RR 1:2)', {'status': 'closed'}
+        elif tracker['entry_hit'] and ((tracker['position'] == 'BUY' and price <= tracker['sl']) or (tracker['position'] == 'SELL' and price >= tracker['sl'])):
+            event, updates = 'SL hit', {'status': 'closed'}
+        if event:
+            with get_db() as conn:
+                clause = ','.join(f'{key}=?' for key in updates)
+                conn.execute(f'UPDATE signal_trackers SET {clause} WHERE id=?', (*updates.values(), tracker['id']))
+            storage.enqueue(f"Signal Tracker {tracker['symbol']}: {event}. Harga: {price:.2f}")
 
 
 def generate_xau_ma200_signal() -> dict:
