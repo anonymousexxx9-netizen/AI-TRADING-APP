@@ -4232,8 +4232,9 @@ def analyze_image_with_groq(image_bytes: bytes, caption: str = None) -> str:
         response = chat_completion(payload, timeout=60, vision=True)
         data = response.json()
         if "error" in data:
-            err_msg = data["error"].get("message", str(data["error"]))
-            print(f"Groq Vision API error: {err_msg}")
+            err = data["error"]
+            err_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            print(f"Vision API error ({response.status_code}, model={GROQ_VISION_MODEL}): {err_msg}")
             return f"❌ API error: {err_msg}"
 
         content = data["choices"][0]["message"]["content"]

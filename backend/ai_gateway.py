@@ -16,6 +16,9 @@ def chat_completion(payload, timeout=60, vision=False):
     effort = os.getenv("AI_REASONING_EFFORT", "")
     if effort:
         body["reasoning_effort"] = effort
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if vision and "openrouter.ai" in base:
+        headers["HTTP-Referer"] = "https://ai-trading-app-2e00.onrender.com"
+        headers["X-Title"] = "Bayproject"
     return requests.post(base + "/chat/completions", json=body,
-                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                         timeout=timeout)
+                         headers=headers, timeout=timeout)
