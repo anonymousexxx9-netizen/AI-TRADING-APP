@@ -1241,7 +1241,40 @@ def _fallback_xau_entry_decision(m15: dict, h4: dict, spot: Decimal) -> dict:
     }
 
 
+def generate_xau_ma200_signal() -> dict:
+    symbol = "XAU/USD"
+    df, error = _ohlcv_or_error(symbol, "5min", outputsize=260)
+    if error:
+        return {"should_alert": False, "error": f"Data M5 XAUUSD tidak tersedia: {error}"}
+    indicators = calculate_indicators(df)
+    if len(df) < 200 or indicators.get("ema200") is None:
+        return {"should_alert": False, "error": "Minimal 200 candle M5 diperlukan untuk MA200."}
+    candle = df.iloc[-1]
+    ma200 = Decimal(str(indicators["ema200"]))
+    close = Decimal(str(candle["close"]))
+    high = Decimal(str(candle["high"]))
+    low = Decimal(str(candle["low"]))
+    position = "BUY" if close > ma200 else "SELL" if close < ma200 else None
+    touched = low <= ma200 <= high
+    if not position or not touched:
+        return {"should_alert": False, "symbol": "XAUUSD", "ma200": float(ma200), "close": float(close), "position": position, "touched": touched, "reason": "Menunggu candle M5 menyentuh MA200 dari sisi trend."}
+    entry = close.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    risk = Decimal("10.00")
+    sl = entry - risk if position == "BUY" else entry + risk
+    tp1 = entry + risk if position == "BUY" else entry - risk
+    tp2 = entry + risk * 2 if position == "BUY" else entry - risk * 2
+    text = (f"🎯 XAUUSD M5 — {position}\n\n"
+            f"Entry: {entry:.2f}\nMA200: {ma200:.2f}\n"
+            f"SL: {sl:.2f} (100 pips)\nTP1: {tp1:.2f} (RR 1:1)\nTP2: {tp2:.2f} (RR 1:2)\n\n"
+            "Sinyal muncul saat candle M5 menyentuh MA200 dari sisi trend.")
+    return {"should_alert": True, "entry_format_v2": True, "symbol": "XAUUSD", "direction": position, "position": position, "entry": float(entry), "ma200": float(ma200), "sl": float(sl), "tp": float(tp1), "tp1": float(tp1), "tp2": float(tp2), "risk_pips": 100, "rr1": 1, "rr2": 2, "text": text}
+
+
 def generate_xau_entry_signal() -> dict:
+    return generate_xau_ma200_signal()
+
+
+def generate_xau_entry_signal_legacy() -> dict:
     """Buat satu keputusan entry XAUUSD berbasis chart M15 + H4 dan fundamental.
 
     AI memilih arah, entry, conviction, dan kandidat TP. Python memvalidasi
