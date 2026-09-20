@@ -81,17 +81,66 @@ function Heading({ eyebrow, title, detail }: { eyebrow: string; title: string; d
 
 function Home({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
   const [watch, setWatch] = useState<any[]>([]), [quotes, setQuotes] = useState<any[]>([]), [symbol, setSymbol] = useState('XAUUSD');
-  const [loaded, setLoaded] = useState(false);
-  const refresh = async () => {
-    const rows = await request(connection, '/watchlist'); setWatch(rows); setLoaded(true);
-    const prices = await Promise.all(rows.map(async (r: any) => {
-      try { return await request(connection, '/market/price', 'POST', r); }
-      catch (e: any) { return { symbol: r.symbol, error: e.message }; }
-    })); setQuotes(prices);
-  };
+   const [loaded, setLoaded] = useState(false), [dashboard, setDashboard] = useState<any>({}), [snapshot, setSnapshot] = useState<any>(null);
+   const dashKey = () => 'bayproject.dashboard:' + connection.url.replace(/[^a-z0-9]/gi, '').slice(0, 32);
+   const refresh = async () => {
+     const rows = await request(connection, '/watchlist'); setWatch(rows); setLoaded(true);
+     const prices = await Promise.all(rows.map(async (r: any) => {
+       try { return await request(connection, '/market/price', 'POST', r); }
+       catch (e: any) { return { symbol: r.symbol, error: e.message }; }
+     })); setQuotes(prices);
+     try { 
+       const cached = Platform.OS !== 'web' ? await SecureStore.getItemAsync(dashKey()).catch(() => null) : null;
+       if (cached) setSnapshot(JSON.parse(cached));
+       const dash = await request(connection, '/dashboard');
+       setDashboard(dash);
+       if (Object.keys(dash).length === 0) {
+         await request(connection, '/dashboard/refresh', 'POST');
+         setDashboard({ macro: { pending: true }, debrief: { pending: true }, calendar: { pending: true }, analysis: { pending: true }, news: { pending: true }, signals: { pending: true } });
+       }
+       try { if (Platform.OS !== 'web') await SecureStore.setItemAsync(dashKey(), JSON.stringify(dash)); } catch (e) { }
+     }
+     catch (e: any) { 
+       setDashboard({}); 
+     }
+   };
   useEffect(() => { void run(refresh); }, []);
+  const renderSection = (kind: string, label: string, data: any) => {
+    if (!data) return null;
+    const isPending = data.pending && !data.text;
+    const isStale = data.pending && data.text;
+    return <View key={kind} style={{ marginBottom: 12 }}>
+      <View style={s.between}>
+        <Text style={[s.label, { color: C.gold }]}>{label}</Text>
+        {isPending && <Text style={[s.muted, { fontSize: 10 }]}>pending...</Text>}
+        {isStale && <Text style={[s.muted, { fontSize: 10 }]}>stale</Text>}
+      </View>
+      {data.text && <>
+        <Text style={[s.muted, { fontSize: 11 }]}>{new Date(data.generated_at).toLocaleString('id-ID')}</Text>
+        <AIResponse text={data.text} />
+      </>}
+      {isPending && <Text style={[s.muted, { fontSize: 11 }]}>preparing…</Text>}
+    </View>;
+  };
   return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
     <Heading eyebrow="PERSONAL WORKSPACE" title="Market overview" detail="Fokus pada setup. Biarkan data memberi konteks." />
+    {(Object.keys(dashboard).length > 0 || snapshot) && <Card>
+      <View style={s.between}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.heading}>Dashboard</Text>
+          <Text style={s.muted}>{Object.values(dashboard).filter((d: any) => d?.text).length} ready{snapshot && loaded ? ' (from cache)' : ''}</Text>
+        </View>
+        <Pressable disabled={busy} onPress={() => run(async () => { await request(connection, '/dashboard/refresh', 'POST'); setDashboard((prev: any) => Object.fromEntries(Object.entries(prev).map(([k, v]: [string, any]) => [k, { ...v, pending: true }]))); })} style={{ padding: 8 }}>
+          <Icon name="refresh-outline" color={C.gold} />
+        </Pressable>
+      </View>
+      {renderSection('macro', 'MACRO BRIEFING', dashboard.macro || snapshot?.macro)}
+      {renderSection('debrief', 'DAILY DEBRIEF', dashboard.debrief || snapshot?.debrief)}
+      {renderSection('calendar', 'CALENDAR', dashboard.calendar || snapshot?.calendar)}
+      {renderSection('analysis', 'ANALYSIS (XAU/USD)', dashboard.analysis || snapshot?.analysis)}
+      {renderSection('news', 'LATEST NEWS', dashboard.news || snapshot?.news)}
+      {renderSection('signals', 'ENTRY SIGNALS', dashboard.signals || snapshot?.signals)}
+    </Card>}
     <Card style={{ backgroundColor: '#10100e', borderColor: '#655332' }}><Image source={require('./assets/bayproject-logo.jpeg')} accessibilityLabel="Bayproject FX — XAUUSD Scalper" style={{ width: '100%', height: 230, backgroundColor: '#000', borderRadius: 12 }} resizeMode="contain" /><View style={s.between}><Text style={[s.label, { color: C.gold }]}>YOUR PRIVATE TRADING DESK</Text><Icon name="trending-up" color={C.gold} /></View><Text style={[s.title, { fontSize: 25 }]}>Konteks yang lebih lengkap.</Text><Text style={s.muted}>Baca struktur pasar, cek confluence, lalu diskusikan setup dengan AI.</Text><Button title="Buka analisis pasar" icon="arrow-forward" onPress={() => navigate('market')} disabled={busy} /></Card>
     <View style={s.between}><Text style={s.heading}>Watchlist kamu</Text><Text style={s.label}>{watch.length} PAIR</Text></View>
     {!loaded && <Busy />}
@@ -99,7 +148,7 @@ function Home({ connection, run, busy, navigate }: ScreenProps & { navigate: (t:
     {quotes.map(q => <Card key={q.symbol}><View style={s.between}><View style={s.row}><View style={styles.pairBadge}><Text style={{ color: C.gold, fontWeight: '700' }}>{q.symbol.slice(0, 3)}</Text></View><View><Text style={s.heading}>{q.symbol}</Text><Text style={s.muted}>{q.source || 'Sumber tidak tersedia'}</Text></View></View><View style={{ alignItems: 'flex-end' }}><Text style={[s.heading, { fontSize: 23 }]}>{q.price ? Number(q.price).toLocaleString('en-US', { maximumFractionDigits: 5 }) : '—'}</Text><Pressable accessibilityLabel={`Hapus ${q.symbol}`} disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'DELETE', { symbol: q.symbol }); await refresh(); })}><Text style={[s.muted, { color: C.red }]}>Hapus</Text></Pressable></View></View>{q.error ? <Text style={{ color: C.red }}>{q.error}</Text> : <Text style={[s.muted, { fontSize: 11 }]}>Diambil {new Date(q.fetched_at).toLocaleString('id-ID')} · Tarik untuk memperbarui</Text>}</Card>)}
     <Card><Field label="Tambahkan pair" value={symbol} onChangeText={setSymbol} placeholder="EURUSD" /><Button title="Tambah ke watchlist" secondary icon="add" disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'POST', { symbol }); await refresh(); })} /></Card>
     <View style={s.row}><View style={{ flex: 1 }}><Button title="AI Assistant" secondary icon="sparkles-outline" disabled={busy} onPress={() => navigate('ai')} /></View><View style={{ flex: 1 }}><Button title="Trading tools" secondary icon="options-outline" disabled={busy} onPress={() => navigate('tools')} /></View></View>
-    <Text style={s.muted}>Scanner memeriksa watchlist setiap ±15 menit saat server aktif. Harga ditampilkan sesuai waktu pengambilan, bukan streaming.</Text>
+    <Text style={s.muted}>Dashboard shows all sections when available. Cache persists across sessions, refreshes via scheduled worker or manual button. News and signals fetch bounded once per worker tick.</Text>
   </ScrollView>;
 }
 
