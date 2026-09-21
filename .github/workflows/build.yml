@@ -6,9 +6,6 @@ on:
     paths:
       - 'mobile/**'
       - '.github/workflows/build.yml'
-    paths-ignore:
-      - '.github/workflows/test-apk.yml'
-      - 'mobile/android/**'
 
 jobs:
   build:
