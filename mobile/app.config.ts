@@ -1,6 +1,10 @@
+const isTestBuild = process.env.TEST_BUILD === '1';
+
 export default {
   expo: {
-    name: 'Bayproject', slug: 'bayproject-private', version: '1.0.0',
+    name: isTestBuild ? 'Bayproject Test' : 'Bayproject',
+    slug: isTestBuild ? 'bayproject-test' : 'bayproject-private',
+    version: '1.0.0',
     icon: './assets/bayproject-logo.jpeg',
     splash: {
       image: './assets/bayproject-logo.jpeg',
@@ -9,10 +13,15 @@ export default {
     },
     backgroundColor: '#070707',
     orientation: 'portrait', userInterfaceStyle: 'dark', scheme: 'bayproject',
-    ios: { supportsTablet: true, bundleIdentifier: 'com.bayproject.privateapp' },
-    android: { package: 'com.bayproject.privateapp',
-      ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}) },
-    plugins: ['expo-font', 'expo-secure-store', 'expo-notifications', ['expo-image-picker', {
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: isTestBuild ? 'com.bayproject.privateapp.test' : 'com.bayproject.privateapp'
+    },
+    android: {
+      package: isTestBuild ? 'com.bayproject.privateapp.test' : 'com.bayproject.privateapp',
+      ...(process.env.GOOGLE_SERVICES_JSON && !isTestBuild ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {})
+    },
+    plugins: ['expo-font', 'expo-secure-store', ...(isTestBuild ? [] : ['expo-notifications']), ['expo-image-picker', {
       photosPermission: 'Izinkan Bayproject memilih screenshot chart untuk dianalisis.',
       cameraPermission: false, microphonePermission: false
     }]],
