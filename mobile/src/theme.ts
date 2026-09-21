@@ -1,1 +1,1 @@
-export const C = { bg: '#070707', card: '#141413', raised: '#22211d', line: '#353127', text: '#f4f2eb', muted: '#aaa79f', gold: '#e6c568', red: '#f08080', silver: '#d1d1d1' };
+export const C = { bg: '#0a0a0a', card: '#1a1a1a', raised: '#2a2a2a', line: '#2a2a2a', text: '#f5f3ef', muted: '#8a8580', gold: '#d4af37', red: '#ef5350', silver: '#b8b4af', green: '#26a69a' };

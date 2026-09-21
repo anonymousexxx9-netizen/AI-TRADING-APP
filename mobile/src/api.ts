@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 export type Connection = { url: string; token: string };
-const key = 'bayproject.connection';
+const key = 'bayproject_connection';
 
 export async function loadConnection(): Promise<Connection | null> {
   // Browser preview intentionally does not persist the private access token.
@@ -30,7 +30,8 @@ export function validateConnection(value: Connection) {
 
 export async function request(connection: Connection, path: string, method = 'GET', body?: unknown): Promise<any> {
   let lastError: any;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  const maxAttempts = method === 'GET' ? 3 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 60_000);
     try {
@@ -44,7 +45,7 @@ export async function request(connection: Connection, path: string, method = 'GE
         const detail = data?.detail;
         const message = typeof detail === 'string' ? detail : response.status === 422
           ? 'Periksa isian: pair, angka, atau format gambar tidak valid.' : `Server merespons ${response.status}.`;
-        if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < 2) {
+        if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxAttempts - 1) {
           await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
           continue;
         }
@@ -54,7 +55,7 @@ export async function request(connection: Connection, path: string, method = 'GE
     } catch (error: any) {
       lastError = error;
       if (error.name === 'AbortError' || error instanceof TypeError) {
-        if (attempt < 2) {
+        if (attempt < maxAttempts - 1) {
           await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
           continue;
         }

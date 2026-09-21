@@ -228,3 +228,25 @@ def test_failed_scheduled_report_is_retried(client, monkeypatch):
     monkeypatch.setattr(core, 'generate_macro_briefing', lambda: 'Recovered report')
     asyncio.run(worker.tick(False, now))
     assert len(client.get('/notifications').json()) == 1
+
+
+def test_dashboard_caches_macro_debrief(client, monkeypatch):
+    monkeypatch.setattr(core, 'generate_macro_briefing', lambda: 'Macro report text')
+    monkeypatch.setattr(core, 'generate_daily_debrief', lambda: 'Debrief report text')
+    assert client.post('/reports/macro', json={}).status_code == 200
+    assert client.post('/reports/debrief', json={}).status_code == 200
+    dashboard = client.get('/dashboard').json()
+    assert dashboard['macro']['text'] == 'Macro report text'
+    assert dashboard['debrief']['text'] == 'Debrief report text'
+    assert 'generated_at' in dashboard['macro']
+    assert 'generated_at' in dashboard['debrief']
+
+
+def test_dashboard_fallback_to_stale_cache(client, monkeypatch):
+    monkeypatch.setattr(core, 'generate_macro_briefing', lambda: 'Fresh macro')
+    client.post('/reports/macro', json={})
+    monkeypatch.setattr(core, 'generate_macro_briefing', lambda: 'Error: provider down')
+    response = client.post('/reports/macro', json={})
+    assert response.status_code == 200
+    assert response.json()['text'] == 'Fresh macro'
+    assert response.json()['stale'] is True

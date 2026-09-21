@@ -165,6 +165,19 @@ def health():
             'worker_last_tick': core.get_setting('mobile_worker_tick'), 'timezone': 'Asia/Jakarta'}
 
 
+@app.get('/dashboard')
+def dashboard():
+    result = {}
+    queued = core.get_queued_refreshes(10)
+    for kind in ('macro', 'debrief', 'calendar', 'analysis', 'news', 'signals'):
+        cached = core.get_cached_report(kind)
+        if cached:
+            result[kind] = {**cached, 'pending': kind in queued}
+        elif kind in queued:
+            result[kind] = {'pending': True, 'text': None, 'generated_at': None}
+    return result
+
+
 @app.get('/watchlist')
 def watchlist():
     return [dict(r) for r in core.list_watch(1, 'mobile')]
@@ -263,7 +276,19 @@ def calendar(high: bool = False, today: bool = False):
     events = core.get_calendar('USD', 'High' if high else None, today)
     if events is None:
         raise HTTPException(502, 'Feed kalender tidak tersedia.')
+    core.set_cached_report('calendar', json.dumps(clean(events)))
     return clean(events)
+
+
+@app.post('/dashboard/refresh')
+def dashboard_refresh():
+    core.queue_dashboard_refresh('macro')
+    core.queue_dashboard_refresh('debrief')
+    core.queue_dashboard_refresh('calendar')
+    core.queue_dashboard_refresh('analysis')
+    core.queue_dashboard_refresh('news')
+    core.queue_dashboard_refresh('signals')
+    return {'queued': ['macro', 'debrief', 'calendar', 'analysis', 'news', 'signals']}
 
 
 @app.post('/calendar/preview')
@@ -298,7 +323,26 @@ def calendar_actual():
 def report(kind: Literal['news', 'macro', 'debrief'], body: TextInput):
     fn = {'news': lambda: core.search_news(body.query), 'macro': core.generate_macro_briefing,
           'debrief': core.generate_daily_debrief}[kind]
-    return {'text': ai_result(fn())}
+    try:
+        text = fn()
+        if not text or text.startswith(('Error ', '❌', '⚠️ AI', 'Error:')):
+            if kind in ('macro', 'debrief'):
+                cached = core.get_cached_report(kind)
+                if cached:
+                    return {**cached, 'stale': True}
+            raise HTTPException(502, 'Layanan AI gagal. Coba lagi dalam beberapa menit.')
+        text = ai_result(text)
+        if kind in ('macro', 'debrief'):
+            core.set_cached_report(kind, text)
+        return {'text': text}
+    except HTTPException:
+        raise
+    except Exception:
+        if kind in ('macro', 'debrief'):
+            cached = core.get_cached_report(kind)
+            if cached:
+                return {**cached, 'stale': True}
+        raise HTTPException(502, 'Layanan AI gagal. Coba lagi dalam beberapa menit.')
 
 
 @app.get('/alerts')

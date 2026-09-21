@@ -20,7 +20,7 @@ import requests
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timezone
 from zoneinfo import ZoneInfo
 from tavily import TavilyClient
 from duckduckgo_search import DDGS
@@ -202,6 +202,39 @@ def init_db():
             alert_date TEXT NOT NULL,
             platform TEXT NOT NULL DEFAULT 'telegram',
             UNIQUE(user_id, symbol, alert_date, platform)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cached_reports (
+            kind TEXT NOT NULL,
+            body TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            pending INTEGER NOT NULL DEFAULT 0,
+            last_refresh_attempted TEXT,
+            refresh_attempts INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (kind)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_refresh_queue (
+            kind TEXT NOT NULL,
+            queued_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (kind)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_snapshots (
+            server_url TEXT NOT NULL,
+            snapshot_data TEXT NOT NULL,
+            snapshot_at TEXT NOT NULL,
+            PRIMARY KEY (server_url)
         )
         """
     )
@@ -4354,6 +4387,88 @@ def add_to_history(user_id, role, content, platform: str = "telegram"):
     conversation_histories[key].append({"role": role, "content": content})
     if len(conversation_histories[key]) > 10:
         conversation_histories[key] = conversation_histories[key][-10:]
+
+
+def get_cached_report(kind: str) -> dict | None:
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT body, generated_at, pending, last_refresh_attempted, refresh_attempts FROM cached_reports WHERE kind=?", (kind,)).fetchone()
+        if row:
+            return {"text": row["body"], "generated_at": row["generated_at"], "pending": bool(row["pending"]), 
+                    "last_attempt": row["last_refresh_attempted"], "attempts": row["refresh_attempts"]}
+        return None
+    finally:
+        conn.close()
+
+
+def set_cached_report(kind: str, body: str, pending: int = 0):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO cached_reports (kind, body, generated_at, pending, last_refresh_attempted, refresh_attempts) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(kind) DO UPDATE SET body=excluded.body, generated_at=excluded.generated_at, pending=excluded.pending",
+        (kind, body, datetime.now(timezone.utc).isoformat(), pending, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def queue_dashboard_refresh(kind: str):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO dashboard_refresh_queue (kind, queued_at, attempts) VALUES (?, ?, 0) "
+        "ON CONFLICT(kind) DO UPDATE SET queued_at=excluded.queued_at, attempts=0",
+        (kind, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_queued_refreshes(limit: int = 2) -> list[str]:
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE dashboard_refresh_queue SET attempts=0, queued_at=? WHERE attempts >= 3 AND datetime(queued_at) <= datetime('now', '-15 minutes')",
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+        conn.commit()
+        rows = conn.execute("SELECT kind FROM dashboard_refresh_queue WHERE attempts < 3 ORDER BY queued_at ASC LIMIT ?", (limit,)).fetchall()
+        return [r["kind"] for r in rows]
+    finally:
+        conn.close()
+
+
+def mark_refresh_done(kind: str):
+    conn = get_db()
+    conn.execute("DELETE FROM dashboard_refresh_queue WHERE kind=?", (kind,))
+    conn.commit()
+    conn.close()
+
+
+def increment_refresh_attempt(kind: str):
+    conn = get_db()
+    conn.execute("UPDATE dashboard_refresh_queue SET attempts=attempts+1 WHERE kind=?", (kind,))
+    conn.commit()
+    conn.close()
+
+
+def get_dashboard_snapshot(server_url: str) -> dict | None:
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT snapshot_data, snapshot_at FROM dashboard_snapshots WHERE server_url=?", (server_url,)).fetchone()
+        if row:
+            return {"data": json.loads(row["snapshot_data"]), "snapshot_at": row["snapshot_at"]}
+        return None
+    finally:
+        conn.close()
+
+
+def set_dashboard_snapshot(server_url: str, snapshot_data: dict):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO dashboard_snapshots (server_url, snapshot_data, snapshot_at) VALUES (?, ?, ?) ON CONFLICT(server_url) DO UPDATE SET snapshot_data=excluded.snapshot_data, snapshot_at=excluded.snapshot_at",
+        (server_url, json.dumps(snapshot_data), datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── Shared keyword-injection logic (handle_message + /ai) ────

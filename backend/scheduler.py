@@ -27,7 +27,7 @@ async def _send(telegram_app, discord_bot, platform: str, chat_id: int, text: st
                 channel = await discord_bot.fetch_channel(chat_id)
             await channel.send(text)
     except Exception as ex:
-        print(f"Gagal kirim alert ke {platform}:{chat_id} → {ex}")
+        print(f"Gagal kirim alert ke {platform}:{chat_id}: {ex}")
         raise
 
 
@@ -94,14 +94,15 @@ async def check_watchlist_traps(telegram_app, discord_bot):
 
 async def send_macro_briefing(telegram_app, discord_bot):
     subs = core.get_macro_subs()
-    if not subs:
-        return
     result = core.generate_macro_briefing()
-    if not result or result.startswith(("Error ", "❌", "⚠️ AI")):
+    if not result or result.startswith(("Error ", "❌", "⚠️ AI", "Error:")):
         raise RuntimeError("Macro briefing unavailable; retry on next worker cycle")
-    for s in subs:
-        text = _wrap("Insight Makro & Bias (Terjadwal)", result, s["platform"])
-        await _send(telegram_app, discord_bot, s["platform"], s["chat_id"], text)
+    core.set_cached_report('macro', result)
+    core.mark_refresh_done('macro')
+    if subs:
+        for s in subs:
+            text = _wrap("Insight Makro & Bias (Terjadwal)", result, s["platform"])
+            await _send(telegram_app, discord_bot, s["platform"], s["chat_id"], text)
 
 
 # ── Kategori 1: Auto-Signal dari watchlist ──────────────────────
@@ -191,14 +192,15 @@ DEBRIEF_SLOT = (5, 0)
 
 async def send_daily_debrief(telegram_app, discord_bot):
     subs = core.get_debrief_subs()
-    if not subs:
-        return
     result = core.generate_daily_debrief()
-    if not result or result.startswith(("Error ", "❌", "⚠️ AI")):
+    if not result or result.startswith(("Error ", "❌", "⚠️ AI", "Error:")):
         raise RuntimeError("Daily debrief unavailable; retry on next worker cycle")
-    for s in subs:
-        text = _wrap("📋 Daily Market Debrief", result, s["platform"])
-        await _send(telegram_app, discord_bot, s["platform"], s["chat_id"], text)
+    core.set_cached_report('debrief', result)
+    core.mark_refresh_done('debrief')
+    if subs:
+        for s in subs:
+            text = _wrap("📋 Daily Market Debrief", result, s["platform"])
+            await _send(telegram_app, discord_bot, s["platform"], s["chat_id"], text)
 
 
 # ── Loop utama ───────────────────────────────────────────────────

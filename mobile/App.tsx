@@ -8,15 +8,16 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import { Connection, loadConnection, request, saveConnection, validateConnection } from './src/api';
+import { DashboardProvider, DASHBOARD_KINDS, useDashboard, parseDashboardJson } from './src/dashboard';
 import { registerPush } from './src/push';
 import { Button, Busy, C, CandleChart, Card, Chips, Empty, Field, Icon, Result, s } from './src/ui';
 
-type Tab = 'home' | 'market' | 'ai' | 'tools' | 'inbox' | 'settings';
+type Tab = 'home' | 'market' | 'ai' | 'tools' | 'inbox' | 'settings' | 'calendar' | 'signals' | 'more' | 'macro' | 'debrief' | 'news' | 'analysis';
 type Run = (fn: () => Promise<void>) => Promise<void>;
 const tabs: { key: Tab; label: string; icon: any }[] = [
-  { key: 'home', label: 'Beranda', icon: 'grid-outline' }, { key: 'market', label: 'Pasar', icon: 'stats-chart-outline' },
-  { key: 'ai', label: 'Assistant', icon: 'sparkles-outline' }, { key: 'tools', label: 'Toolkit', icon: 'options-outline' },
-  { key: 'inbox', label: 'Inbox', icon: 'notifications-outline' },
+  { key: 'home', label: 'Beranda', icon: 'grid-outline' }, { key: 'market', label: 'Chart', icon: 'stats-chart-outline' },
+  { key: 'signals', label: 'Sinyal', icon: 'flash-outline' }, { key: 'calendar', label: 'Kalender', icon: 'calendar-outline' },
+  { key: 'more', label: 'Lainnya', icon: 'ellipsis-horizontal-circle-outline' },
 ];
 
 export default function App() { return <SafeAreaProvider><Shell /></SafeAreaProvider>; }
@@ -46,14 +47,23 @@ function Shell() {
       {!!error && <View style={styles.error}><Icon name="alert-circle-outline" color={C.red} /><Text style={{ color: C.red, flex: 1, lineHeight: 20 }}>{error}</Text><Pressable accessibilityRole="button" accessibilityLabel="Tutup pesan error" onPress={() => setError('')}><Icon name="close" color={C.red} size={18} /></Pressable></View>}
       {busy && <View style={styles.progress}><ActivityIndicator size="small" color={C.gold} /><Text style={s.muted}>Memproses permintaan… Server gratis mungkin sedang dibangunkan.</Text></View>}
       {!connection ? <Connect onConnect={c => run(() => connect(c))} busy={busy} /> : <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {tab === 'home' && <Home connection={connection} run={run} busy={busy} navigate={setTab} />}
-        {tab === 'market' && <Market connection={connection} run={run} busy={busy} />}
-        {tab === 'ai' && <Chat connection={connection} run={run} busy={busy} />}
-        {tab === 'tools' && <Tools connection={connection} run={run} busy={busy} />}
-        {tab === 'inbox' && <Inbox connection={connection} run={run} busy={busy} />}
-        {tab === 'settings' && <Settings connection={connection} run={run} busy={busy} disconnect={disconnect} />}
+        <DashboardProvider connection={connection}>
+          {tab === 'home' && <Home connection={connection} run={run} busy={busy} navigate={setTab} />}
+          {tab === 'macro' && <MacroDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
+          {tab === 'debrief' && <DebriefDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
+          {tab === 'news' && <NewsDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
+          {tab === 'analysis' && <AnalysisDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
+          {tab === 'market' && <Market connection={connection} run={run} busy={busy} />}
+          {tab === 'ai' && <Chat connection={connection} run={run} busy={busy} />}
+          {tab === 'tools' && <Tools connection={connection} run={run} busy={busy} />}
+          {tab === 'signals' && <Tools connection={connection} run={run} busy={busy} initialTool="Sinyal" focused />}
+          {tab === 'calendar' && <Tools connection={connection} run={run} busy={busy} initialTool="Kalender" focused />}
+          {tab === 'more' && <More navigate={setTab} busy={busy} />}
+          {tab === 'inbox' && <Inbox connection={connection} run={run} busy={busy} />}
+          {tab === 'settings' && <Settings connection={connection} run={run} busy={busy} disconnect={disconnect} />}
+        </DashboardProvider>
       </KeyboardAvoidingView>}
-      {connection && <View style={styles.tabs}>{tabs.map(t => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }} disabled={busy} key={t.key} onPress={() => { setError(''); setTab(t.key); }} style={styles.tab}><Icon name={t.icon} color={tab === t.key ? C.gold : C.muted} /><Text style={{ color: tab === t.key ? C.gold : C.muted, fontSize: 10, fontWeight: '600' }}>{t.label}</Text>{tab === t.key && <View style={styles.tabDot} />}</Pressable>)}</View>}
+      {connection && <View style={styles.tabs}>{tabs.map(t => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === t.key }} disabled={busy} key={t.key} onPress={() => { setError(''); setTab(t.key); }} style={styles.tab}><Icon name={t.icon} color={tab === t.key ? C.gold : C.muted} size={24} /><Text style={{ color: tab === t.key ? C.gold : C.muted, fontSize: 10, fontWeight: '600', marginTop: 2 }}>{t.label}</Text>{tab === t.key && <View style={styles.tabDot} />}</Pressable>)}</View>}
     </View>
   </SafeAreaView>;
 }
@@ -80,75 +90,90 @@ type ScreenProps = { connection: Connection; run: Run; busy: boolean };
 function Heading({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) { return <View style={{ gap: 7 }}><Text style={s.label}>{eyebrow}</Text><Text style={s.title}>{title}</Text>{detail && <Text style={s.muted}>{detail}</Text>}</View>; }
 
 function Home({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
-  const [watch, setWatch] = useState<any[]>([]), [quotes, setQuotes] = useState<any[]>([]), [symbol, setSymbol] = useState('XAUUSD');
-   const [loaded, setLoaded] = useState(false), [dashboard, setDashboard] = useState<any>({}), [snapshot, setSnapshot] = useState<any>(null);
-   const dashKey = () => 'bayproject.dashboard:' + connection.url.replace(/[^a-z0-9]/gi, '').slice(0, 32);
-   const refresh = async () => {
+   const { data: dashboard, refreshing, refresh, section } = useDashboard();
+   const [watch, setWatch] = useState<any[]>([]), [quotes, setQuotes] = useState<any[]>([]), [symbol, setSymbol] = useState('XAUUSD');
+   const [loaded, setLoaded] = useState(false);
+   const refreshWatchlist = async () => {
      const rows = await request(connection, '/watchlist'); setWatch(rows); setLoaded(true);
      const prices = await Promise.all(rows.map(async (r: any) => {
        try { return await request(connection, '/market/price', 'POST', r); }
        catch (e: any) { return { symbol: r.symbol, error: e.message }; }
      })); setQuotes(prices);
-     try { 
-       const cached = Platform.OS !== 'web' ? await SecureStore.getItemAsync(dashKey()).catch(() => null) : null;
-       if (cached) setSnapshot(JSON.parse(cached));
-       const dash = await request(connection, '/dashboard');
-       setDashboard(dash);
-       if (Object.keys(dash).length === 0) {
-         await request(connection, '/dashboard/refresh', 'POST');
-         setDashboard({ macro: { pending: true }, debrief: { pending: true }, calendar: { pending: true }, analysis: { pending: true }, news: { pending: true }, signals: { pending: true } });
-       }
-       try { if (Platform.OS !== 'web') await SecureStore.setItemAsync(dashKey(), JSON.stringify(dash)); } catch (e) { }
-     }
-     catch (e: any) { 
-       setDashboard({}); 
-     }
    };
-  useEffect(() => { void run(refresh); }, []);
-  const renderSection = (kind: string, label: string, data: any) => {
-    if (!data) return null;
-    const isPending = data.pending && !data.text;
-    const isStale = data.pending && data.text;
-    return <View key={kind} style={{ marginBottom: 12 }}>
-      <View style={s.between}>
-        <Text style={[s.label, { color: C.gold }]}>{label}</Text>
-        {isPending && <Text style={[s.muted, { fontSize: 10 }]}>pending...</Text>}
-        {isStale && <Text style={[s.muted, { fontSize: 10 }]}>stale</Text>}
-      </View>
-      {data.text && <>
-        <Text style={[s.muted, { fontSize: 11 }]}>{new Date(data.generated_at).toLocaleString('id-ID')}</Text>
-        <AIResponse text={data.text} />
-      </>}
-      {isPending && <Text style={[s.muted, { fontSize: 11 }]}>preparing…</Text>}
-    </View>;
-  };
-  return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
-    <Heading eyebrow="PERSONAL WORKSPACE" title="Market overview" detail="Fokus pada setup. Biarkan data memberi konteks." />
-    {(Object.keys(dashboard).length > 0 || snapshot) && <Card>
-      <View style={s.between}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.heading}>Dashboard</Text>
-          <Text style={s.muted}>{Object.values(dashboard).filter((d: any) => d?.text).length} ready{snapshot && loaded ? ' (from cache)' : ''}</Text>
-        </View>
-        <Pressable disabled={busy} onPress={() => run(async () => { await request(connection, '/dashboard/refresh', 'POST'); setDashboard((prev: any) => Object.fromEntries(Object.entries(prev).map(([k, v]: [string, any]) => [k, { ...v, pending: true }]))); })} style={{ padding: 8 }}>
-          <Icon name="refresh-outline" color={C.gold} />
-        </Pressable>
-      </View>
-      {renderSection('macro', 'MACRO BRIEFING', dashboard.macro || snapshot?.macro)}
-      {renderSection('debrief', 'DAILY DEBRIEF', dashboard.debrief || snapshot?.debrief)}
-      {renderSection('calendar', 'CALENDAR', dashboard.calendar || snapshot?.calendar)}
-      {renderSection('analysis', 'ANALYSIS (XAU/USD)', dashboard.analysis || snapshot?.analysis)}
-      {renderSection('news', 'LATEST NEWS', dashboard.news || snapshot?.news)}
-      {renderSection('signals', 'ENTRY SIGNALS', dashboard.signals || snapshot?.signals)}
-    </Card>}
-    <Card style={{ backgroundColor: '#10100e', borderColor: '#655332' }}><Image source={require('./assets/bayproject-logo.jpeg')} accessibilityLabel="Bayproject FX — XAUUSD Scalper" style={{ width: '100%', height: 230, backgroundColor: '#000', borderRadius: 12 }} resizeMode="contain" /><View style={s.between}><Text style={[s.label, { color: C.gold }]}>YOUR PRIVATE TRADING DESK</Text><Icon name="trending-up" color={C.gold} /></View><Text style={[s.title, { fontSize: 25 }]}>Konteks yang lebih lengkap.</Text><Text style={s.muted}>Baca struktur pasar, cek confluence, lalu diskusikan setup dengan AI.</Text><Button title="Buka analisis pasar" icon="arrow-forward" onPress={() => navigate('market')} disabled={busy} /></Card>
-    <View style={s.between}><Text style={s.heading}>Watchlist kamu</Text><Text style={s.label}>{watch.length} PAIR</Text></View>
-    {!loaded && <Busy />}
-    {loaded && watch.length === 0 && <Card><Empty title="Mulai dari pair pilihanmu" detail="Tambahkan pair untuk memantau harga dan mengaktifkan pemindaian setup di server." icon="add-circle-outline" /></Card>}
-    {quotes.map(q => <Card key={q.symbol}><View style={s.between}><View style={s.row}><View style={styles.pairBadge}><Text style={{ color: C.gold, fontWeight: '700' }}>{q.symbol.slice(0, 3)}</Text></View><View><Text style={s.heading}>{q.symbol}</Text><Text style={s.muted}>{q.source || 'Sumber tidak tersedia'}</Text></View></View><View style={{ alignItems: 'flex-end' }}><Text style={[s.heading, { fontSize: 23 }]}>{q.price ? Number(q.price).toLocaleString('en-US', { maximumFractionDigits: 5 }) : '—'}</Text><Pressable accessibilityLabel={`Hapus ${q.symbol}`} disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'DELETE', { symbol: q.symbol }); await refresh(); })}><Text style={[s.muted, { color: C.red }]}>Hapus</Text></Pressable></View></View>{q.error ? <Text style={{ color: C.red }}>{q.error}</Text> : <Text style={[s.muted, { fontSize: 11 }]}>Diambil {new Date(q.fetched_at).toLocaleString('id-ID')} · Tarik untuk memperbarui</Text>}</Card>)}
-    <Card><Field label="Tambahkan pair" value={symbol} onChangeText={setSymbol} placeholder="EURUSD" /><Button title="Tambah ke watchlist" secondary icon="add" disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'POST', { symbol }); await refresh(); })} /></Card>
-    <View style={s.row}><View style={{ flex: 1 }}><Button title="AI Assistant" secondary icon="sparkles-outline" disabled={busy} onPress={() => navigate('ai')} /></View><View style={{ flex: 1 }}><Button title="Trading tools" secondary icon="options-outline" disabled={busy} onPress={() => navigate('tools')} /></View></View>
-    <Text style={s.muted}>Dashboard shows all sections when available. Cache persists across sessions, refreshes via scheduled worker or manual button. News and signals fetch bounded once per worker tick.</Text>
+   useEffect(() => { void run(refreshWatchlist); }, []);
+   const macro = section('macro'), debrief = section('debrief'), calendar = section('calendar'), analysis = section('analysis'), news = section('news'), signals = section('signals');
+   const readyCount = DASHBOARD_KINDS.filter(k => section(k).text).length;
+   return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy || refreshing} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
+     <Heading eyebrow="PERSONAL WORKSPACE" title="Beranda" detail="Ringkasan pasar dan sinyal terkini." />
+     <View style={s.between}>
+       <Text style={s.heading}>Dashboard</Text>
+       <Pressable disabled={busy || refreshing} onPress={() => run(refresh)} style={{ padding: 8 }}>
+         <Icon name="refresh-outline" color={C.gold} />
+       </Pressable>
+     </View>
+     <Text style={[s.muted, { marginBottom: 12 }]}>{readyCount} bagian siap · Tanggal {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
+     {macro.text && <Pressable onPress={() => navigate('macro')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>MACRO ANALISIS</Text>{macro.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={macro.text.slice(0, 300) + (macro.text.length > 300 ? '...' : '')} /><Text style={[s.muted, { fontSize: 10 }]}>{macro.generated_at ? new Date(macro.generated_at).toLocaleString('id-ID') : '—'}</Text></Card></Pressable>}
+     {debrief.text && <Pressable onPress={() => navigate('debrief')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>DEBRIEF HARIAN</Text>{debrief.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={debrief.text.slice(0, 300) + (debrief.text.length > 300 ? '...' : '')} /><Text style={[s.muted, { fontSize: 10 }]}>{debrief.generated_at ? new Date(debrief.generated_at).toLocaleString('id-ID') : '—'}</Text></Card></Pressable>}
+     {calendar.text && <Pressable onPress={() => navigate('calendar')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>KALENDER EKONOMI</Text>{calendar.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><Text style={s.muted} numberOfLines={3}>Tersedia. Tekan untuk membuka kalender lengkap.</Text></Card></Pressable>}
+     {signals.text && <Pressable onPress={() => navigate('signals')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>SINYAL ENTRY</Text>{signals.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={signals.text.slice(0, 300) + (signals.text.length > 300 ? '...' : '')} /></Card></Pressable>}
+     {analysis.text && <Pressable onPress={() => navigate('analysis')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>ANALISIS XAU/USD</Text>{analysis.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={analysis.text.slice(0, 300) + (analysis.text.length > 300 ? '...' : '')} />{analysis.generated_at && <CandleChart candles={parseDashboardJson(analysis)?.candles || []} />}</Card></Pressable>}
+     {news.text && <Pressable onPress={() => navigate('news')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>BERITA TERKINI</Text>{news.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={news.text.slice(0, 300) + (news.text.length > 300 ? '...' : '')} /></Card></Pressable>}
+     {!macro.text && !debrief.text && !calendar.text && !signals.text && !analysis.text && !news.text && <Card><Empty title="Dashboard kosong" detail="Tekan tombol refresh untuk mengambil data pasar." icon="refresh-outline" /></Card>}
+     <View style={s.between}><Text style={s.heading}>Watchlist</Text><Text style={s.label}>{watch.length} PAIR</Text></View>
+     {!loaded && <Busy />}
+     {loaded && watch.length === 0 && <Card><Empty title="Mulai dari pair pilihanmu" detail="Tambahkan pair untuk memantau harga." icon="add-circle-outline" /></Card>}
+     {quotes.map(q => <Card key={q.symbol}><View style={s.between}><View style={s.row}><View style={styles.pairBadge}><Text style={{ color: C.gold, fontWeight: '700' }}>{q.symbol.slice(0, 3)}</Text></View><View><Text style={s.heading}>{q.symbol}</Text><Text style={s.muted}>{q.source || 'Sumber tidak tersedia'}</Text></View></View><View style={{ alignItems: 'flex-end' }}><Text style={[s.heading, { fontSize: 23 }]}>{q.price ? Number(q.price).toLocaleString('en-US', { maximumFractionDigits: 5 }) : '—'}</Text><Pressable accessibilityLabel={`Hapus ${q.symbol}`} disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'DELETE', { symbol: q.symbol }); await refreshWatchlist(); })}><Text style={[s.muted, { color: C.red }]}>Hapus</Text></Pressable></View></View>{q.error ? <Text style={{ color: C.red }}>{q.error}</Text> : <Text style={[s.muted, { fontSize: 11 }]}>Diambil {new Date(q.fetched_at).toLocaleString('id-ID')}</Text>}</Card>)}
+     <Card><Field label="Tambahkan pair" value={symbol} onChangeText={setSymbol} placeholder="EURUSD" /><Button title="Tambah ke watchlist" secondary icon="add" disabled={busy} onPress={() => run(async () => { await request(connection, '/watchlist', 'POST', { symbol }); await refreshWatchlist(); })} /></Card>
+     <View style={s.row}><View style={{ flex: 1 }}><Button title="AI Assistant" secondary icon="sparkles-outline" disabled={busy} onPress={() => navigate('ai')} /></View><View style={{ flex: 1 }}><Button title="Trading tools" secondary icon="options-outline" disabled={busy} onPress={() => navigate('tools')} /></View></View>
+   </ScrollView>;
+}
+
+function MacroDetail({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
+  const { section, refreshing, refresh } = useDashboard();
+  const macro = section('macro');
+  return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy || refreshing} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
+    <Pressable onPress={() => navigate('home')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <Icon name="chevron-back-outline" color={C.gold} /><Text style={s.muted}>Kembali ke Beranda</Text>
+    </Pressable>
+    <Heading eyebrow="MACRO ANALISIS" title="Ringkasan makro" detail={macro.generated_at ? new Date(macro.generated_at).toLocaleString('id-ID') : 'Data tidak tersedia'} />
+    {macro.text ? <Card><AIResponse text={macro.text} /></Card> : <Card><Empty title="Macro analisis belum siap" detail="Tekan refresh untuk memulai pengambilan data." icon="analytics-outline" /></Card>}
+  </ScrollView>;
+}
+
+function DebriefDetail({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
+  const { section, refreshing, refresh } = useDashboard();
+  const debrief = section('debrief');
+  return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy || refreshing} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
+    <Pressable onPress={() => navigate('home')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <Icon name="chevron-back-outline" color={C.gold} /><Text style={s.muted}>Kembali ke Beranda</Text>
+    </Pressable>
+    <Heading eyebrow="DEBRIEF HARIAN" title="Ringkasan harian" detail={debrief.generated_at ? new Date(debrief.generated_at).toLocaleString('id-ID') : 'Data tidak tersedia'} />
+    {debrief.text ? <Card><AIResponse text={debrief.text} /></Card> : <Card><Empty title="Debrief belum siap" detail="Tekan refresh untuk memulai pengambilan data." icon="document-text-outline" /></Card>}
+  </ScrollView>;
+}
+
+function NewsDetail({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
+  const { section, refreshing, refresh } = useDashboard();
+  const news = section('news');
+  return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy || refreshing} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
+    <Pressable onPress={() => navigate('home')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <Icon name="chevron-back-outline" color={C.gold} /><Text style={s.muted}>Kembali ke Beranda</Text>
+    </Pressable>
+    <Heading eyebrow="BERITA TERKINI" title="Ringkasan berita" detail={news.generated_at ? new Date(news.generated_at).toLocaleString('id-ID') : 'Data tidak tersedia'} />
+    {news.text ? <Card><AIResponse text={news.text} /></Card> : <Card><Empty title="Berita belum siap" detail="Tekan refresh untuk memulai pengambilan data." icon="newspaper-outline" /></Card>}
+  </ScrollView>;
+}
+
+function AnalysisDetail({ connection, run, busy, navigate }: ScreenProps & { navigate: (t: Tab) => void }) {
+  const { section, refreshing, refresh } = useDashboard();
+  const analysis = section('analysis');
+  const data = parseDashboardJson(analysis);
+  return <ScrollView contentContainerStyle={s.page} refreshControl={<RefreshControl refreshing={busy || refreshing} onRefresh={() => run(refresh)} tintColor={C.gold} />} keyboardShouldPersistTaps="handled">
+    <Pressable onPress={() => navigate('home')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <Icon name="chevron-back-outline" color={C.gold} /><Text style={s.muted}>Kembali ke Beranda</Text>
+    </Pressable>
+    <Heading eyebrow="ANALISIS XAU/USD" title="Analisis lengkap" detail={analysis.generated_at ? new Date(analysis.generated_at).toLocaleString('id-ID') : 'Data tidak tersedia'} />
+    {data ? <><Card><Text style={s.heading}>XAU/USD · 1H</Text><View style={s.between}><Text style={[s.title, { fontSize: 25 }]}>{data.confidence?.bias_direction || 'Netral'}</Text><View><Text style={[s.title, { color: C.gold, textAlign: 'right' }]}>{data.confidence?.confidence ?? '—'}<Text style={{ fontSize: 16 }}>/100</Text></Text><Text style={s.muted}>Technical score</Text></View></View><Text style={s.muted}>{data.regime} · Skor teknikal bukan probabilitas profit.</Text><CandleChart candles={data.candles || []} /></Card><Card><MarketAnalysisView type="Ringkasan" data={data} /></Card></> : <Card><Empty title="Analisis belum siap" detail="Tekan refresh untuk memulai pengambilan data." icon="stats-chart-outline" /></Card>}
   </ScrollView>;
 }
 
@@ -201,8 +226,8 @@ function Chat({ connection, run, busy }: ScreenProps) {
 }
 
 const toolOptions = ['Sinyal', 'Backtest', 'Kalkulator lot', 'Korelasi', 'Kalender', 'Berita & Makro'];
-function Tools({ connection, run, busy }: ScreenProps) {
-  const [tool, setTool] = useState('Sinyal'), [symbol, setSymbol] = useState('XAUUSD'), [interval, setInterval] = useState('1h');
+function Tools({ connection, run, busy, initialTool, focused }: ScreenProps & { initialTool?: string; focused?: boolean }) {
+  const [tool, setTool] = useState(initialTool || 'Sinyal'), [symbol, setSymbol] = useState('XAUUSD'), [interval, setInterval] = useState('1h');
   const [candles, setCandles] = useState('500'), [balance, setBalance] = useState('1000'), [risk, setRisk] = useState('1'), [sl, setSl] = useState('20');
   const [pairs, setPairs] = useState('XAUUSD, EURUSD, GBPUSD, USDJPY'), [query, setQuery] = useState('gold USD forex');
   const [showEventTools, setShowEventTools] = useState(false);
@@ -217,19 +242,33 @@ function Tools({ connection, run, busy }: ScreenProps) {
       setReports(previous => ({ ...previous, [title]: result }));
     }
   });
-  return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"><Heading eyebrow="TRADER TOOLKIT" title="Dari konteks ke keputusan." /><Chips values={toolOptions} value={tool} onChange={t => { setTool(t); setOutput(null); }} />
-    <Card><Text style={s.heading}>{tool}</Text>
-      {['Sinyal', 'Backtest', 'Kalkulator lot'].includes(tool) && <Field label="Pair" value={symbol} onChangeText={setSymbol} />}
-      {['Sinyal', 'Backtest'].includes(tool) && <Chips values={['15min', '1h', '4h', '1day']} value={interval} onChange={setInterval} />}
-      {tool === 'Sinyal' && <><Text style={s.muted}>Scanner berbasis aturan bot. Keputusan entry khusus gold memakai M15, H4, dan konteks fundamental.</Text><Button title="Scan setup pair" disabled={busy} onPress={() => call('Scanner', '/signals/scan', { symbol, interval })} /><Button title="Keputusan entry XAU/USD" secondary disabled={busy} onPress={() => call('Entry XAU/USD', '/signals/entry')} /></>}
-      {tool === 'Backtest' && <><Field label="Jumlah candle (120–1000)" value={candles} onChangeText={setCandles} numeric /><Text style={s.muted}>Simulasi historis strategi scanner asli bot. Hasil belum memasukkan seluruh biaya eksekusi broker.</Text><Button title="Jalankan backtest" disabled={busy} onPress={() => call('Hasil backtest', '/signals/backtest', { symbol, interval, candles: Number(candles) })} /></>}
-      {tool === 'Kalkulator lot' && <><Field label="Balance (USD)" value={balance} onChangeText={setBalance} numeric /><Field label="Risiko (%)" value={risk} onChangeText={setRisk} numeric /><Field label="Stop loss (pips)" value={sl} onChangeText={setSl} numeric /><Button title="Hitung ukuran posisi" disabled={busy} onPress={() => call('Ukuran posisi', '/tools/lot', { symbol, balance: Number(balance), risk_percent: Number(risk), sl_pips: Number(sl) })} /><Text style={s.muted}>Estimasi dari bot; sesuaikan dengan spesifikasi kontrak broker.</Text></>}
-      {tool === 'Korelasi' && <><Field label="Pair dipisahkan koma (2–6)" value={pairs} onChangeText={setPairs} multiline /><Button title="Hitung korelasi" disabled={busy} onPress={() => call('Matriks korelasi', '/tools/correlation', { symbols: pairs.split(',').map(p => p.trim()).filter(Boolean) })} /></>}
-      {tool === 'Kalender' && <><View style={s.between}><Text style={s.text}>High impact saja</Text><Switch accessibilityLabel="High impact saja" value={high} onValueChange={setHigh} trackColor={{ true: C.gold }} /></View><View style={s.between}><Text style={s.text}>Hari ini saja</Text><Switch accessibilityLabel="Hari ini saja" value={today} onValueChange={setToday} trackColor={{ true: C.gold }} /></View><Button title="Muat kalender USD" disabled={busy} onPress={() => call('Kalender ekonomi', `/calendar?high=${high}&today=${today}`, undefined, 'GET')} /><Button title={showEventTools ? "Tutup alat analisis event" : "Analisis event & cari actual"} secondary onPress={() => setShowEventTools(!showEventTools)} />{showEventTools && <><Field label="Nama event untuk analisis" value={event} onChangeText={setEvent} placeholder="CPI / Non-Farm / FOMC" /><Button title="Preview & prediksi event" secondary disabled={busy} onPress={() => call('Event preview', '/calendar/preview', { query: event })} /><Button title="Analisis bias fundamental" secondary disabled={busy} onPress={() => call('Bias fundamental', '/calendar/bias', { query: event })} /><Button title="Cari hasil actual tambahan" secondary disabled={busy} onPress={() => call('Actual event', '/calendar/actual')} /></>}</>}
-      {tool === 'Berita & Makro' && <><Field label="Topik berita" value={query} onChangeText={setQuery} /><Button title="Cari & rangkum berita" disabled={busy} onPress={() => call('Berita terbaru', '/reports/news', { query })} /><Button title="Macro briefing" secondary disabled={busy} onPress={() => call('Macro briefing', '/reports/macro', { query })} /><Button title="Daily market debrief" secondary disabled={busy} onPress={() => call('Daily debrief', '/reports/debrief', { query })} /></>}
-     </Card>
-     {Object.keys(reports).length > 0 && <Card><View style={s.row}><Icon name="documents-outline" color={C.gold} /><Text style={s.heading}>Laporan tersimpan</Text></View><Text style={s.muted}>Laporan tetap tersedia selama aplikasi terbuka. Pilih laporan untuk membacanya tanpa generate ulang.</Text><Chips values={Object.keys(reports)} value={reports[outputTitle] ? outputTitle : Object.keys(reports)[0]} onChange={title => { setOutputTitle(title); setOutput(reports[title]); }} /></Card>}
-     {output !== null && <Card><View style={s.row}><Icon name="document-text-outline" color={C.gold} /><Text style={s.heading}>{outputTitle}</Text></View><View style={s.divider} />{outputTitle === "Kalender ekonomi" && Array.isArray(output) ? <CalendarAgenda key={JSON.stringify(output)} events={output} onAnalyze={name => call("Event preview", "/calendar/preview", { query: name })} /> : <Result data={output} />}</Card>}
+  const visibleOptions = focused && initialTool ? [initialTool] : toolOptions;
+  return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"><Heading eyebrow={focused ? (initialTool === 'Kalender' ? 'KALENDER EKONOMI' : initialTool === 'Sinyal' ? 'SINYAL TRADING' : 'TRADER TOOLKIT') : 'TRADER TOOLKIT'} title={focused ? (initialTool === 'Kalender' ? 'Agenda USD' : initialTool === 'Sinyal' ? 'Sinyal & Entry' : tool) : 'Dari konteks ke keputusan.'} /><Chips values={visibleOptions} value={tool} onChange={t => { setTool(t); setOutput(null); }} />
+     <Card><Text style={s.heading}>{tool}</Text>
+       {['Sinyal', 'Backtest', 'Kalkulator lot'].includes(tool) && <Field label="Pair" value={symbol} onChangeText={setSymbol} />}
+       {['Sinyal', 'Backtest'].includes(tool) && <Chips values={['15min', '1h', '4h', '1day']} value={interval} onChange={setInterval} />}
+       {tool === 'Sinyal' && <><Text style={s.muted}>Scanner berbasis aturan bot. Keputusan entry khusus gold memakai M15, H4, dan konteks fundamental.</Text><Button title="Scan setup pair" disabled={busy} onPress={() => call('Scanner', '/signals/scan', { symbol, interval })} /><Button title="Keputusan entry XAU/USD" secondary disabled={busy} onPress={() => call('Entry XAU/USD', '/signals/entry')} /></>}
+       {tool === 'Backtest' && <><Field label="Jumlah candle (120–1000)" value={candles} onChangeText={setCandles} numeric /><Text style={s.muted}>Simulasi historis strategi scanner asli bot. Hasil belum memasukkan seluruh biaya eksekusi broker.</Text><Button title="Jalankan backtest" disabled={busy} onPress={() => call('Hasil backtest', '/signals/backtest', { symbol, interval, candles: Number(candles) })} /></>}
+       {tool === 'Kalkulator lot' && <><Field label="Balance (USD)" value={balance} onChangeText={setBalance} numeric /><Field label="Risiko (%)" value={risk} onChangeText={setRisk} numeric /><Field label="Stop loss (pips)" value={sl} onChangeText={setSl} numeric /><Button title="Hitung ukuran posisi" disabled={busy} onPress={() => call('Ukuran posisi', '/tools/lot', { symbol, balance: Number(balance), risk_percent: Number(risk), sl_pips: Number(sl) })} /><Text style={s.muted}>Estimasi dari bot; sesuaikan dengan spesifikasi kontrak broker.</Text></>}
+       {tool === 'Korelasi' && <><Field label="Pair dipisahkan koma (2–6)" value={pairs} onChangeText={setPairs} multiline /><Button title="Hitung korelasi" disabled={busy} onPress={() => call('Matriks korelasi', '/tools/correlation', { symbols: pairs.split(',').map(p => p.trim()).filter(Boolean) })} /></>}
+         {tool === 'Kalender' && <><View style={s.between}><Text style={s.text}>High impact saja</Text><Switch accessibilityLabel="High impact saja" value={high} onValueChange={setHigh} trackColor={{ true: C.gold }} /></View><View style={s.between}><Text style={s.text}>Hari ini saja</Text><Switch accessibilityLabel="Hari ini saja" value={today} onValueChange={setToday} trackColor={{ true: C.gold }} /></View><Button title="Muat kalender USD" disabled={busy} onPress={() => call('Kalender ekonomi', `/calendar?high=${high}&today=${today}`, undefined, 'GET')} /><Button title={showEventTools ? "Tutup analisis event" : "Analisis event & actual"} secondary onPress={() => setShowEventTools(!showEventTools)} />{showEventTools && <><Field label="Nama event untuk analisis" value={event} onChangeText={setEvent} placeholder="CPI / Non-Farm / FOMC" /><Button title="Preview & prediksi event" secondary disabled={busy} onPress={() => call('Event preview', '/calendar/preview', { query: event })} /><Button title="Bias fundamental" secondary disabled={busy} onPress={() => call('Bias fundamental', '/calendar/bias', { query: event })} /><Button title="Cari actual tambahan" secondary disabled={busy} onPress={() => call('Actual event', '/calendar/actual')} /></>}</>}
+       {tool === 'Berita & Makro' && <><Field label="Topik berita" value={query} onChangeText={setQuery} /><Button title="Cari & rangkum berita" disabled={busy} onPress={() => call('Berita terbaru', '/reports/news', { query })} /><Button title="Macro briefing" secondary disabled={busy} onPress={() => call('Macro briefing', '/reports/macro', { query })} /><Button title="Daily market debrief" secondary disabled={busy} onPress={() => call('Daily debrief', '/reports/debrief', { query })} /></>}
+       </Card>
+       {Object.keys(reports).length > 0 && <Card><View style={s.row}><Icon name="documents-outline" color={C.gold} /><Text style={s.heading}>Laporan tersimpan</Text></View><Text style={s.muted}>Laporan tetap tersedia selama aplikasi terbuka. Pilih laporan untuk membacanya tanpa generate ulang.</Text><Chips values={Object.keys(reports)} value={reports[outputTitle] ? outputTitle : Object.keys(reports)[0]} onChange={title => { setOutputTitle(title); setOutput(reports[title]); }} /></Card>}
+       {output !== null && <Card><View style={s.row}><Icon name="document-text-outline" color={C.gold} /><Text style={s.heading}>{outputTitle}</Text></View><View style={s.divider} />{outputTitle === "Kalender ekonomi" && Array.isArray(output) ? <CalendarAgenda key={JSON.stringify(output)} events={output} onAnalyze={name => call("Event preview", "/calendar/preview", { query: name })} /> : <Result data={output} />}</Card>}
+    </ScrollView>;
+}
+
+function More({ navigate, busy }: { navigate: (t: Tab) => void; busy: boolean }) {
+  const items: { label: string; icon: any; tab: Tab; desc: string }[] = [
+    { label: 'AI Assistant', icon: 'sparkles-outline', tab: 'ai', desc: 'Diskusi setup & chat' },
+    { label: 'Trading Tools', icon: 'options-outline', tab: 'tools', desc: 'Backtest, lot, korelasi, berita' },
+    { label: 'Inbox & Alert', icon: 'notifications-outline', tab: 'inbox', desc: 'Notifikasi & price alert' },
+    { label: 'Pengaturan', icon: 'settings-outline', tab: 'settings', desc: 'Koneksi & push' },
+  ];
+  return <ScrollView contentContainerStyle={s.page}><Heading eyebrow="LAINNYA" title="Semua fitur" detail="Akses cepat ke perkakas lanjutan." />
+    {items.map(it => <Pressable key={it.tab} disabled={busy} onPress={() => navigate(it.tab)} style={({ pressed }) => [s.card, { flexDirection: 'row', alignItems: 'center', gap: 14, opacity: pressed ? .7 : 1 }]}><View style={[styles.pairBadge, { backgroundColor: '#1e1c12' }]}><Icon name={it.icon} color={C.gold} /></View><View style={{ flex: 1 }}><Text style={s.heading}>{it.label}</Text><Text style={s.muted}>{it.desc}</Text></View><Icon name="chevron-forward" color={C.muted} /></Pressable>)}
+    <Card><Text style={s.heading}>Tentang</Text><Text style={s.muted}>Bayproject FX · Private edition. Dark/gold dashboard. Data dashboard otomatis dari worker; manual refresh tetap tersedia.</Text></Card>
   </ScrollView>;
 }
 
@@ -266,5 +305,6 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', borderTopWidth: 1, borderColor: C.line, paddingTop: 12, paddingBottom: 8, backgroundColor: C.bg },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 3, gap: 5, minHeight: 52 }, tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.gold },
   pairBadge: { backgroundColor: '#30291b', width: 45, height: 45, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  dashCard: { backgroundColor: '#141310', borderColor: '#3a3220', borderWidth: 1, borderRadius: 16, padding: 14, gap: 8, marginBottom: 12 },
   composer: { gap: 10, padding: 16, borderTopWidth: 1, borderColor: C.line, backgroundColor: C.card },
 });
