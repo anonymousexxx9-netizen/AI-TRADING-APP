@@ -317,6 +317,27 @@ def calendar(high: bool = False, today: bool = False):
     return clean(events)
 
 
+@app.get('/dashboard/calendar')
+def dashboard_calendar():
+    cached = core.get_cached_report('dashboard_calendar')
+    if cached and cached.get('text'):
+        try:
+            gen_at = datetime.fromisoformat(cached['generated_at'])
+            age_seconds = (datetime.now(timezone.utc) - gen_at).total_seconds()
+            if age_seconds < 300:
+                data = json.loads(cached['text'])
+                if isinstance(data, list):
+                    return {'events': data, 'status': 'cached'}
+        except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+            pass
+    events = core.get_calendar('USD', filter_impact='High', days=7)
+    if events is None:
+        return {'events': [], 'status': 'unavailable'}
+    events_clean = clean(events)
+    core.set_cached_report('dashboard_calendar', json.dumps(events_clean))
+    return {'events': events_clean, 'status': 'ok'}
+
+
 @app.post('/dashboard/refresh')
 def dashboard_refresh():
     core.queue_dashboard_refresh('macro')

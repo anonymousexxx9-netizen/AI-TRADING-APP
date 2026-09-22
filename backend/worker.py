@@ -57,7 +57,7 @@ async def tick(slow_checks=True, now=None):
                 else:
                     core.increment_refresh_attempt(kind)
             elif kind == 'calendar':
-                events = core.get_calendar('USD')
+                events = core.get_calendar('USD', filter_impact='High', days=7)
                 if events is not None:
                     import json
                     from api import clean

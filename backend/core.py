@@ -3901,7 +3901,7 @@ def _fetch_calendar_raw():
         return _calendar_raw_cache["events"]  # fallback ke cache lama kalau ada
 
 
-def get_calendar(filter_country="USD", filter_impact=None, only_today=False):
+def get_calendar(filter_country="USD", filter_impact=None, only_today=False, days=None):
     """Ambil event dari ForexFactory RSS (feed mingguan) — hasil mentah
     di-cache 5 menit (lihat _fetch_calendar_raw), filter country/impact/date
     dilakukan di sini per-panggilan supaya tetap fleksibel tanpa fetch ulang.
@@ -3911,6 +3911,9 @@ def get_calendar(filter_country="USD", filter_impact=None, only_today=False):
     waktu Eastern). Tanpa filter ini, feed berisi SATU MINGGU penuh
     event, jadi klaim 'event hari ini' di briefing bisa salah kalau
     tidak difilter di sini.
+
+    days=N membuang event lebih dari N hari ke depan (hitung dari today_ny).
+    default None = tak filter.
     """
     raw_events = _fetch_calendar_raw()
     if raw_events is None:
@@ -3920,22 +3923,29 @@ def get_calendar(filter_country="USD", filter_impact=None, only_today=False):
     today_ny = datetime.now(ZoneInfo("America/New_York")).date()
     skipped_unparsed = 0
     for e in raw_events:
-        if e["country"] != filter_country:
+        if filter_country and e["country"] != filter_country:
             continue
         if filter_impact and e["impact"] != filter_impact:
             continue
+        event_date = _parse_ff_date(e["date"])
         if only_today:
-            event_date = _parse_ff_date(e["date"])
             if event_date is None:
                 skipped_unparsed += 1
                 continue
             if event_date != today_ny:
                 continue
+        if days is not None:
+            if event_date is None:
+                skipped_unparsed += 1
+                continue
+            delta = (event_date - today_ny).days
+            if delta < 0 or delta >= days:
+                continue
         events.append({
             "title": e["title"], "date": e["date"], "time": e["time"], "impact": e["impact"],
             "forecast": e["forecast"], "previous": e["previous"], "actual": e["actual"],
         })
-    if only_today and skipped_unparsed:
+    if skipped_unparsed:
         print(f"get_calendar: {skipped_unparsed} event dibuang karena format tanggal tak dikenal")
     return events
 
