@@ -5,7 +5,7 @@ import { Connection, request } from './api';
 
 export const DASHBOARD_KINDS = ['macro', 'debrief', 'calendar', 'analysis', 'news', 'signals'] as const;
 export type DashboardKind = typeof DASHBOARD_KINDS[number];
-export type DashboardSection = { text?: string | null; generated_at?: string | null; pending?: boolean; error?: string; last_attempt?: string | null; attempts?: number };
+export type DashboardSection = { text?: string | null; data?: any; generated_at?: string | null; pending?: boolean; error?: string; last_attempt?: string | null; attempts?: number };
 export type DashboardData = Partial<Record<DashboardKind, DashboardSection>>;
 type DashboardContextValue = { data: DashboardData; loading: boolean; refreshing: boolean; error: string; refresh: () => Promise<void>; section: (kind: DashboardKind) => DashboardSection };
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -95,6 +95,10 @@ export function useDashboard() {
   return value;
 }
 export function parseDashboardJson(section: DashboardSection) {
+  if (section.data && typeof section.data === 'object') return section.data;
   if (!section.text) return null;
-  try { return JSON.parse(section.text); } catch { return null; }
+  try {
+    const parsed = JSON.parse(section.text);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch { return null; }
 }

@@ -5,10 +5,15 @@ export type Connection = { url: string; token: string };
 const key = 'bayproject_connection';
 
 export async function loadConnection(): Promise<Connection | null> {
-  // Browser preview intentionally does not persist the private access token.
   if (Platform.OS === 'web') return null;
-  const value = await SecureStore.getItemAsync(key);
-  return value ? JSON.parse(value) : null;
+  try {
+    const value = await SecureStore.getItemAsync(key);
+    if (!value) return null;
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed.url === 'string' && typeof parsed.token === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function saveConnection(value: Connection | null) {

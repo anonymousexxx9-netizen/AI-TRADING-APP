@@ -75,7 +75,8 @@ async def tick(slow_checks=True, now=None):
                     analysis = {'indicators': indicators, 'confidence': core.calculate_confidence(indicators),
                                 'regime': core.get_regime(indicators), 'sr': sr,
                                 'trap': core.detect_trap(df, indicators), 'pattern': core.detect_candlestick_pattern(df),
-                                'structure': core.detect_market_structure(df)}
+                                'structure': core.detect_market_structure(df),
+                                'candles': df.tail(80).to_dict(orient='records')}
                     core.set_cached_report('analysis', json.dumps(clean(analysis)))
                     core.mark_refresh_done('analysis')
                 else:

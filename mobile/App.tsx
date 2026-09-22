@@ -23,20 +23,38 @@ const tabs: { key: Tab; label: string; icon: any }[] = [
 export default function App() { return <SafeAreaProvider><Shell /></SafeAreaProvider>; }
 
 function Shell() {
-  const [connection, setConnection] = useState<Connection | null>(null);
-  const [booting, setBooting] = useState(true);
-  const [tab, setTab] = useState<Tab>('home');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
+   const [connection, setConnection] = useState<Connection | null>(null);
+   const [booting, setBooting] = useState(true);
+   const [tab, setTab] = useState<Tab>('home');
+   const [error, setError] = useState('');
+   const [busy, setBusy] = useState(false);
+    const [marketState, setMarketState] = useState<{ symbol: string; interval: string; data: any; extra: any; chart: string; detail: string }>({ symbol: 'XAUUSD', interval: '1h', data: null, extra: null, chart: '', detail: 'Ringkasan' });
+    const marketLoaded = useRef(false);
+    const inFlight = useRef(false);
   const run: Run = async fn => {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setError('');
     try { await fn(); } catch (e: any) { setError(e.message || 'Koneksi gagal. Periksa alamat server dan jaringan.'); }
     finally { inFlight.current = false; setBusy(false); }
   };
-  useEffect(() => { loadConnection().then(setConnection).catch(() => setError('Koneksi tersimpan tidak dapat dibaca. Silakan masuk kembali.')).finally(() => setBooting(false)); }, []);
-  async function connect(c: Connection) { const valid = validateConnection(c); await request(valid, '/health'); await saveConnection(valid); setConnection(valid); }
+   useEffect(() => { loadConnection().then(setConnection).catch(() => setError('Koneksi tersimpan tidak dapat dibaca. Silakan masuk kembali.')).finally(() => setBooting(false)); }, []);
+   useEffect(() => {
+     if (Platform.OS === 'web' || !connection) return;
+     const key = `bayproject_market_${connection.url.replace(/[^a-zA-Z0-9]/g, '_').slice(-100)}`;
+     marketLoaded.current = false;
+     SecureStore.getItemAsync(key).then(value => {
+       if (value) {
+         try { setMarketState(previous => ({ ...previous, ...JSON.parse(value) })); } catch { }
+       }
+       marketLoaded.current = true;
+     }).catch(() => { marketLoaded.current = true; });
+   }, [connection]);
+   useEffect(() => {
+     if (Platform.OS === 'web' || !connection || !marketLoaded.current) return;
+     const key = `bayproject_market_${connection.url.replace(/[^a-zA-Z0-9]/g, '_').slice(-100)}`;
+     void SecureStore.setItemAsync(key, JSON.stringify(marketState)).catch(() => undefined);
+   }, [connection, marketState]);
+   async function connect(c: Connection) { const valid = validateConnection(c); await request(valid, '/health'); await saveConnection(valid); setConnection(valid); }
   async function disconnect() { await saveConnection(null); setConnection(null); setTab('home'); }
   if (booting) return <View style={[styles.root, { justifyContent: 'center' }]}><ActivityIndicator color={C.gold} /></View>;
   return <SafeAreaView style={styles.root} edges={['top', 'bottom']}><StatusBar barStyle="light-content" />
@@ -53,7 +71,7 @@ function Shell() {
           {tab === 'debrief' && <DebriefDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
           {tab === 'news' && <NewsDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
           {tab === 'analysis' && <AnalysisDetail connection={connection} run={run} busy={busy} navigate={setTab} />}
-          {tab === 'market' && <Market connection={connection} run={run} busy={busy} />}
+           {tab === 'market' && <Market connection={connection} run={run} busy={busy} state={marketState} setState={setMarketState} />}
           {tab === 'ai' && <Chat connection={connection} run={run} busy={busy} />}
           {tab === 'tools' && <Tools connection={connection} run={run} busy={busy} />}
           {tab === 'signals' && <Tools connection={connection} run={run} busy={busy} initialTool="Sinyal" focused />}
@@ -116,7 +134,7 @@ function Home({ connection, run, busy, navigate }: ScreenProps & { navigate: (t:
      {debrief.text && <Pressable onPress={() => navigate('debrief')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>DEBRIEF HARIAN</Text>{debrief.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={debrief.text.slice(0, 300) + (debrief.text.length > 300 ? '...' : '')} /><Text style={[s.muted, { fontSize: 10 }]}>{debrief.generated_at ? new Date(debrief.generated_at).toLocaleString('id-ID') : '—'}</Text></Card></Pressable>}
      {calendar.text && <Pressable onPress={() => navigate('calendar')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>KALENDER EKONOMI</Text>{calendar.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><Text style={s.muted} numberOfLines={3}>Tersedia. Tekan untuk membuka kalender lengkap.</Text></Card></Pressable>}
      {signals.text && <Pressable onPress={() => navigate('signals')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>SINYAL ENTRY</Text>{signals.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={signals.text.slice(0, 300) + (signals.text.length > 300 ? '...' : '')} /></Card></Pressable>}
-     {analysis.text && <Pressable onPress={() => navigate('analysis')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>ANALISIS XAU/USD</Text>{analysis.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={analysis.text.slice(0, 300) + (analysis.text.length > 300 ? '...' : '')} />{analysis.generated_at && <CandleChart candles={parseDashboardJson(analysis)?.candles || []} />}</Card></Pressable>}
+      {analysis.text && <Pressable onPress={() => navigate('analysis')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>ANALISIS XAU/USD</Text>{analysis.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View>{parseDashboardJson(analysis) ? <MarketAnalysisView type="Ringkasan" data={parseDashboardJson(analysis)} /> : <AIResponse text={analysis.text.slice(0, 300) + (analysis.text.length > 300 ? '...' : '')} />}{analysis.generated_at && <CandleChart candles={parseDashboardJson(analysis)?.candles || []} />}</Card></Pressable>}
      {news.text && <Pressable onPress={() => navigate('news')}><Card style={styles.dashCard}><View style={s.between}><Text style={[s.label, { color: C.gold }]}>BERITA TERKINI</Text>{news.pending && <Text style={[s.muted, { fontSize: 10 }]}>memperbarui...</Text>}</View><AIResponse text={news.text.slice(0, 300) + (news.text.length > 300 ? '...' : '')} /></Card></Pressable>}
      {!macro.text && !debrief.text && !calendar.text && !signals.text && !analysis.text && !news.text && <Card><Empty title="Dashboard kosong" detail="Tekan tombol refresh untuk mengambil data pasar." icon="refresh-outline" /></Card>}
      <View style={s.between}><Text style={s.heading}>Watchlist</Text><Text style={s.label}>{watch.length} PAIR</Text></View>
@@ -177,24 +195,21 @@ function AnalysisDetail({ connection, run, busy, navigate }: ScreenProps & { nav
   </ScrollView>;
 }
 
-function Market({ connection, run, busy }: ScreenProps) {
-  const [symbol, setSymbol] = useState('XAUUSD'), [interval, setInterval] = useState('1h');
-  const [data, setData] = useState<any>(null), [extra, setExtra] = useState<any>(null), [chart, setChart] = useState('');
-  const [detail, setDetail] = useState('Ringkasan');
-  const body = { symbol, interval };
-  const load = () => run(async () => { setData(null); setExtra(null); setChart(''); setData(await request(connection, '/market/analysis', 'POST', body)); });
-  return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"><Heading eyebrow="MARKET INTELLIGENCE" title="Baca struktur pasar" />
-    <Card><Field label="Pair" value={symbol} onChangeText={v => { setSymbol(v); setData(null); setExtra(null); setChart(''); }} /><Chips values={['1min', '5min', '15min', '1h', '4h', '1day']} value={interval} onChange={v => { setInterval(v); setData(null); setExtra(null); setChart(''); }} /><Button title="Ambil analisis" icon="analytics-outline" disabled={busy} onPress={load} /></Card>
-    {data ? <><Card><View style={s.between}><Text style={s.heading}>{data.symbol}</Text><Text style={[s.label, { color: C.gold }]}>{data.interval}</Text></View><View style={s.between}><Text style={[s.title, { fontSize: 25 }]}>{data.confidence?.bias_direction || 'Netral'}</Text><View><Text style={[s.title, { color: C.gold, textAlign: 'right' }]}>{data.confidence?.confidence ?? '—'}<Text style={{ fontSize: 16 }}>/100</Text></Text><Text style={s.muted}>Technical score</Text></View></View><Text style={s.muted}>{data.regime} · Skor teknikal bukan probabilitas profit.</Text><CandleChart candles={data.candles || []} /><Text style={[s.muted, { fontSize: 11 }]}>Data diambil {new Date(data.fetched_at).toLocaleString('id-ID')}</Text></Card>
-      <Chips values={['Ringkasan', 'Indikator', 'Level S/R', 'Pattern', 'Structure', 'Score']} value={detail} onChange={setDetail} />
-      <Card><MarketAnalysisView type={detail} data={detail === 'Indikator' ? data.indicators : detail === 'Level S/R' ? data.sr : detail === 'Pattern' ? data.pattern : detail === 'Structure' ? data.structure : detail === 'Score' ? data.confidence : { regime: data.regime, trap: data.trap }} /></Card>
-      <Button title="Chart lengkap + EMA / S/R" secondary disabled={busy} onPress={() => run(async () => setChart((await request(connection, '/market/chart', 'POST', body)).image))} />
-      {!!chart && <Card><Image accessibilityLabel="Chart lengkap EMA dan support resistance" source={{ uri: `data:image/png;base64,${chart}` }} style={{ width: '100%', aspectRatio: 1.5 }} resizeMode="contain" /></Card>}
-    </> : <Card><Empty title="Analisis dimulai dari data" detail="Pilih pair dan timeframe untuk melihat chart, indikator, pola, serta level penting." icon="stats-chart-outline" /></Card>}
-    <Button title="Cek confluence 4 timeframe" secondary disabled={busy} onPress={() => run(async () => setExtra(await request(connection, '/market/confluence', 'POST', { symbol })))} />
-    <Button title="Penjelasan teknikal oleh AI" secondary disabled={busy} onPress={() => run(async () => setExtra(await request(connection, '/market/explain', 'POST', body)))} />
-    {extra && <Card><Text style={s.heading}>{Array.isArray(extra.per_tf) ? 'Confluence 4 timeframe' : 'Analisis lanjutan'}</Text>{Array.isArray(extra.per_tf) ? <ConfluenceView data={extra} /> : <Result data={extra} />}</Card>}
-  </ScrollView>;
+function Market({ connection, run, busy, state, setState }: ScreenProps & { state: { symbol: string; interval: string; data: any; extra: any; chart: string; detail: string }; setState: React.Dispatch<React.SetStateAction<{ symbol: string; interval: string; data: any; extra: any; chart: string; detail: string }>> }) {
+   const body = { symbol: state.symbol, interval: state.interval };
+   const load = () => run(async () => { setState(prev => ({ ...prev, data: null, extra: null, chart: '' })); const result = await request(connection, '/market/analysis', 'POST', body); setState(prev => ({ ...prev, data: result })); });
+   return <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"><Heading eyebrow="MARKET INTELLIGENCE" title="Baca struktur pasar" />
+     <Card><Field label="Pair" value={state.symbol} onChangeText={v => setState(prev => ({ ...prev, symbol: v, data: null, extra: null, chart: '' })) } /><Chips values={['1min', '5min', '15min', '1h', '4h', '1day']} value={state.interval} onChange={v => setState(prev => ({ ...prev, interval: v, data: null, extra: null, chart: '' })) } /><Button title="Ambil analisis" icon="analytics-outline" disabled={busy} onPress={load} /></Card>
+     {state.data ? <><Card><View style={s.between}><Text style={s.heading}>{state.data.symbol}</Text><Text style={[s.label, { color: C.gold }]}>{state.data.interval}</Text></View><View style={s.between}><Text style={[s.title, { fontSize: 25 }]}>{state.data.confidence?.bias_direction || 'Netral'}</Text><View><Text style={[s.title, { color: C.gold, textAlign: 'right' }]}>{state.data.confidence?.confidence ?? '—'}<Text style={{ fontSize: 16 }}>/100</Text></Text><Text style={s.muted}>Technical score</Text></View></View><Text style={s.muted}>{state.data.regime} · Skor teknikal bukan probabilitas profit.</Text><CandleChart candles={state.data.candles || []} /><Text style={[s.muted, { fontSize: 11 }]}>Data diambil {new Date(state.data.fetched_at).toLocaleString('id-ID')}</Text></Card>
+       <Chips values={['Ringkasan', 'Indikator', 'Level S/R', 'Pattern', 'Structure', 'Score']} value={state.detail} onChange={v => setState(prev => ({ ...prev, detail: v }))} />
+       <Card><MarketAnalysisView type={state.detail} data={state.detail === 'Indikator' ? state.data.indicators : state.detail === 'Level S/R' ? state.data.sr : state.detail === 'Pattern' ? state.data.pattern : state.detail === 'Structure' ? state.data.structure : state.detail === 'Score' ? state.data.confidence : { regime: state.data.regime, trap: state.data.trap }} /></Card>
+       <Button title="Chart lengkap + EMA / S/R" secondary disabled={busy} onPress={() => run(async () => { const result = await request(connection, '/market/chart', 'POST', body); setState(prev => ({ ...prev, chart: result.image })); })} />
+       {!!state.chart && <Card><Image accessibilityLabel="Chart lengkap EMA dan support resistance" source={{ uri: `data:image/png;base64,${state.chart}` }} style={{ width: '100%', aspectRatio: 1.5 }} resizeMode="contain" /></Card>}
+     </> : <Card><Empty title="Analisis dimulai dari data" detail="Pilih pair dan timeframe untuk melihat chart, indikator, pola, serta level penting." icon="stats-chart-outline" /></Card>}
+     <Button title="Cek confluence 4 timeframe" secondary disabled={busy} onPress={() => run(async () => { const result = await request(connection, '/market/confluence', 'POST', { symbol: state.symbol }); setState(prev => ({ ...prev, extra: result })); })} />
+     <Button title="Penjelasan teknikal oleh AI" secondary disabled={busy} onPress={() => run(async () => { const result = await request(connection, '/market/explain', 'POST', body); setState(prev => ({ ...prev, extra: result })); })} />
+     {state.extra && <Card><Text style={s.heading}>{Array.isArray(state.extra.per_tf) ? 'Confluence 4 timeframe' : 'Analisis lanjutan'}</Text>{Array.isArray(state.extra.per_tf) ? <ConfluenceView data={state.extra} /> : <Result data={state.extra} />}</Card>}
+   </ScrollView>;
 }
 
 function Chat({ connection, run, busy }: ScreenProps) {

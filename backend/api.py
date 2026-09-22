@@ -172,6 +172,43 @@ def dashboard():
     for kind in ('macro', 'debrief', 'calendar', 'analysis', 'news', 'signals'):
         cached = core.get_cached_report(kind)
         if cached:
+            entry_text = cached.get('text')
+            if kind == 'analysis' and entry_text:
+                try:
+                    parsed = json.loads(entry_text) if isinstance(entry_text, str) else entry_text
+                    if isinstance(parsed, dict):
+                        cached['data'] = parsed
+                except Exception:
+                    pass
+            if kind == 'signals' and entry_text:
+                try:
+                    signal_obj = json.loads(entry_text)
+                    if isinstance(signal_obj, dict):
+                        position = signal_obj.get('position')
+                        entry = signal_obj.get('entry')
+                        sl = signal_obj.get('sl')
+                        tp = signal_obj.get('tp')
+                        conviction = signal_obj.get('conviction')
+                        should_alert = signal_obj.get('should_alert', False)
+                        cached['data'] = signal_obj
+                        cached_text = signal_obj.get('text') or ''
+                        if cached_text:
+                            cached['text'] = cached_text
+                        else:
+                            parts = [f"🎯 XAUUSD — {position or '—'}"]
+                            if entry is not None:
+                                parts.append(f"Entry: {float(entry):.2f}")
+                            if sl is not None:
+                                parts.append(f"SL: {float(sl):.2f}")
+                            if tp is not None:
+                                parts.append(f"TP: {float(tp):.2f}")
+                            if conviction is not None:
+                                parts.append(f"Conviction: {int(conviction)}%")
+                            if not should_alert:
+                                parts.append("Status: menunggu sinyal (MA200 belum disentuh).")
+                            cached['text'] = '\n'.join(parts)
+                except Exception:
+                    pass
             result[kind] = {**cached, 'pending': kind in queued}
         elif kind in queued:
             result[kind] = {'pending': True, 'text': None, 'generated_at': None}
